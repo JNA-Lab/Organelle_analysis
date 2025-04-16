@@ -1,0 +1,378 @@
+---
+title: "Organelle_analysis"
+author: "Fiona M. Love"
+date: "2025-04-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(readbitmap)
+library(RImageJROI)
+library(spatstat.geom)
+library(sf)
+library(dplyr)
+library(terra)
+library(ggplot2)
+library(ggpubr)
+library(patchwork)
+
+```
+
+#ANALYSIS
+
+Select ImageJ Macro output directory
+*R VERSION BUG ON WINDOWS 10* - WON'T OPEN SELECTION WINDOW UNTIL AFTER file.choose() HAS BEEN RUN
+https://stackoverflow.com/questions/77984544/choose-dir-function-does-not-work-in-r-v4-3-2
+```{r data_location}
+dir <- choose.dir() #WINDOWS ONLY - TODO Mac support with tk option - https://stackoverflow.com/questions/48218491/os-independent-way-to-select-directory-interactively-in-r
+```
+
+Identify conditions for matching and iterating over ROI/measurement files
+```{r conditions}
+files <- list.files(dir, pattern = ('\\.csv$|\\.zip$'), recursive = FALSE, include.dirs = FALSE)
+conditions <- unique(gsub('_analysis.csv||_ROIs.zip', '', files))
+```
+
+Identify features segmented
+```{r features}
+has_cells <- TRUE #REQUIRED
+has_nuclei <- TRUE
+has_Golgi <- TRUE
+has_peroxisomes <- FALSE
+has_ER <- FALSE
+has_mito <- FALSE
+has_lyso <- FALSE
+has_bacteria <- TRUE
+
+has_pairwise_mcs <- FALSE
+has_multi_mcs <- FALSE
+```
+
+Identify files for each condition
+```{r file_matching}
+#currently reading in all data - consider moving into loop if too much in memory at once
+conditions.data <- lapply(conditions, function(condition){
+  print(condition)
+  c <- list()
+  measurements <- read.csv(paste0(dir, '\\', condition, '_analysis.csv'))
+  measurements$ROI_name <- unlist(regmatches(measurements$ID, regexec("(?<=:).+(?=:)?", measurements$ID, perl = T)))
+  #TODO - this might break if trailing : missing - dependent on single/multi channel image - should be consistent with macro
+  measurements.cells = measurements[measurements$Type == 'cell',]
+  measurements.other = measurements[measurements$Type != 'cell',]
+  
+  ROIs = read.ijzip(paste0(dir, '\\', condition, '_ROIs.zip'), names = TRUE)
+  ROIs.cells <- ROIs[measurements[measurements$Type == 'cell',]$ROI_name]
+  ROIs.other <- ROIs[measurements[measurements$Type != 'cell',]$ROI_name]
+  remove(ROIs)
+  remove(measurements)
+  
+  c[['measurements.cells']] <- measurements.cells
+  c[['measurements.other']] <- measurements.other
+  c[['ROIs.cells']] <- ROIs.cells
+  c[['ROIs.other']] <- ROIs.other
+  return(c)
+})
+names(conditions.data) = conditions
+```
+
+Defining function for converting ImageJ ROIs into sf polygons
+```{r st_polygon_from_coords}
+  st_polygon_from_coords <- function(ijroi){
+    coords <- ijroi$coords
+    #loop
+    coords <- coords[c(1:nrow(coords), 1),]
+    coords.list <- list(coords)
+    tryCatch(expr = st_polygon(coords.list), finally = st_polygon(coords.list[rev(1:length(coords.list))]))
+  }
+```
+
+BATCH LOOP
+```{r batch loop}
+per_cell.all = do.call(rbind, lapply(conditions, function(condition){
+  
+  c = conditions.data[[condition]]
+  measurements.cells = c[['measurements.cells']]
+  measurements.other = c[['measurements.other']]
+  ROIs.cells = c[['ROIs.cells']]
+  ROIs.other = c[['ROIs.other']]
+  
+  sf.cells = lapply(ROIs.cells, st_polygon_from_coords)
+  sf.other = lapply(ROIs.other, st_polygon_from_coords)
+  
+  sf.per_cell = lapply(sf.cells, function(c){ 
+    lapply(sf.other, function(o){
+      #st_within(o, c, sparse = FALSE)
+      st_intersects(o, c, sparse = FALSE)#more lenient for structures that might overlap with segmented cell boundary
+    })
+  })
+  sf.per_cell.filtered = lapply(1:length(sf.per_cell), function(c){ which(sf.per_cell[[c]] == TRUE) })
+  #assigning names later
+  
+  
+  
+  #PER-CELL ANALYSES
+  
+  names(sf.per_cell.filtered) = names(sf.per_cell)
+  other_to_cells = data.frame(other = c(), cell = c())
+  for (c in names(sf.cells)){ 
+    for (o in names(sf.other)){
+      if(o %in% names(sf.per_cell.filtered[[c]])){
+        other_to_cells = rbind(other_to_cells, data.frame(other = o, cell = c))
+      }
+    }
+  }
+  measurements.other$cell = sapply(measurements.other$ROI_name, function(n){ other_to_cells[other_to_cells$other == n,]$cell })
+  
+  #handling ROIs without a cell, and ROIs assigned to multiple cells by overlap
+  measurements.other = do.call(rbind, lapply(1:nrow(measurements.other), function(i){
+    row = measurements.other[i,]
+    celllist = row[,"cell"]
+    if(length(celllist[[1]]) == 0){ row$cell = NA }#catch lists with empty string as first item
+    if(length(celllist[[1]]) == 1){ row$cell = celllist[[1]] }
+    else{
+      #duplicate row for each cell in list
+      row = do.call(rbind, lapply(celllist[[1]], function(c){
+        row$cell = c
+        row
+      }))
+    }
+    return(row)
+  }))
+  
+  other_to_cells$type = sapply(other_to_cells$other, function(o){ measurements.other[measurements.other$ROI_name == o,]$Type[1]})#should be unique; adding [1] for output formatting 
+  
+  #identify infected cells
+  cells.contain = data.frame(cell = unique(other_to_cells$cell))
+  cells.contain$nucleus = sapply(cells.contain$cell, function(c){ "nucleus" %in% other_to_cells[other_to_cells$cell == c, ]$type })
+  cells.contain$golgi = sapply(cells.contain$cell, function(c){ "golgi" %in% other_to_cells[other_to_cells$cell == c, ]$type })
+  cells.contain$bac = sapply(cells.contain$cell, function(c){ "bac" %in% other_to_cells[other_to_cells$cell == c, ]$type })
+  
+  infected = (cells.contain %>% filter(nucleus == TRUE, golgi == TRUE, bac == TRUE))$cell
+  uninfected = (cells.contain %>% filter(nucleus == TRUE, golgi == TRUE, bac == FALSE))$cell
+  valid = c(infected, uninfected)
+  
+  measurements.other$infected = measurements.other$cell %in% infected
+  measurements.other$valid = measurements.other$cell %in% c(infected, uninfected)
+  
+  #MDR analysis
+  #TODO - probably faster to read in cell binaries rather than rasterize, but would need to reassign to ROIs
+  cells.rasters = lapply(valid, function(c){ 
+    r = extend(rasterize(vect(sf.cells[[c]]), rast(vect(sf.cells[[c]]),res=1)), 1)
+    crs(r) <- 'local'
+    return(r)
+  })
+  names(cells.rasters) = valid
+  cells.pixels = lapply(valid, function(c){ as.data.frame(cells.rasters[[c]], xy = TRUE) })
+  names(cells.pixels) = valid
+  
+  cells.nuc_cent = do.call(rbind, lapply(valid, function(c){ 
+    cn = which(names(sf.other) %in% other_to_cells[other_to_cells$cell == c & other_to_cells$type == 'nucleus',]$other)
+    if(length(cn) > 1){
+      nc = st_centroid(st_geometrycollection(sf.other[cn]))
+      return(data.frame(Cent_X_pix = nc[1], Cent_Y_pix = nc[2], cell = c))
+    }
+    else{
+      return(measurements.other[measurements.other$cell == c & measurements.other$Type == 'nucleus', c('Cent_X_pix', 'Cent_Y_pix', 'cell')])
+    }
+  }))
+  
+  cells.golgi_cent = do.call(rbind, lapply(valid, function(c){ 
+    cg = which(names(sf.other) %in% other_to_cells[other_to_cells$cell == c & other_to_cells$type == 'golgi',]$other)
+    if(length(cg) > 1){
+      gc = st_centroid(st_geometrycollection(sf.other[cg]))
+      return(data.frame(Cent_X_pix = gc[1], Cent_Y_pix = gc[2], cell = c))
+    }
+    else{
+      return(measurements.other[measurements.other$cell == c & measurements.other$Type == 'golgi', c('Cent_X_pix', 'Cent_Y_pix', 'cell')])
+    }
+  }))
+  
+  
+  #for Pixel distance Golgi-based MDR
+  
+  organelles.spatvectors = lapply(names(sf.other), function(o){ 
+    v = vect(sf.other[[o]]) 
+    crs(v) <- 'local'
+    return(v)
+  })
+  names(organelles.spatvectors) = names(sf.other)
+  for(org in names(organelles.spatvectors)){
+    organelles.spatvectors[[org]]$rast_val = 2
+  }#TODO - organelle type metadata?
+  
+  #TODO URGENT (for Tom) - iterate for every organelle type, then rbind for organelles.rasters below rather than regenerating
+  golgi.rasters = lapply(names(cells.pixels), function(cell){
+    cell.golgi = other_to_cells[other_to_cells$cell == cell & other_to_cells$type == 'golgi', "other"]
+    golgi.spatvector = vect(organelles.spatvectors[cell.golgi])
+    g = extend(rasterize(golgi.spatvector, rast(golgi.spatvector, res = 1, crs = 'local'), field = 'rast_val'), 1)#extend might not be necessary here - check
+    #ERROR HERE - TODO 8/4
+    #crs(g) <- 'local'
+    g = extend(g, cells.rasters[[cell]]) #changing extent of raster to fit corresponding cell for distance calculations
+    return(g)
+  })
+  names(golgi.rasters) = names(cells.pixels)
+  #also ensure cell raster extents encompass entire golgi assigned to that cell:
+  cells.rasters = lapply(names(cells.rasters), function(cell){
+    c = cells.rasters[[cell]]
+    if(cell %in% names(golgi.rasters)){#shouldn't be necessary...?
+      c = extend(c, golgi.rasters[[cell]])
+    }
+    return(c)
+  })
+  names(cells.rasters) = valid#names lost above
+  
+  
+  for(name in names(cells.pixels)){
+    cell = cells.pixels[[name]]
+    #distance to nucleus/PM and standard MDR
+    cell$dist_to_nuc = sapply(1:nrow(cell), function(px){ 
+      px_x = cell[px, 'x']
+      px_y = cell[px, 'y']
+      cent = cells.nuc_cent[cells.nuc_cent$cell == name,]
+      return(abs(sqrt((px_x - cent$Cent_X_pix[1])^2 + (px_y - cent$Cent_Y_pix[1])^2)))
+      # #index for formatting - multiple golgi/nuclei handled above in centroid calculation
+    })
+    cell$dist_to_PM = as.data.frame(mask(distance(cells.rasters[[name]], target = 1), cells.rasters[[name]]))[,1]#distance to nearest PM pixel (outside cell)
+    cell$norm = cell$dist_to_nuc/(cell$dist_to_nuc + cell$dist_to_PM)
+    
+    cell$angle = sapply(1:nrow(cell), function(px){ 
+      px_x = cell[px, 'x']
+      px_y = cell[px, 'y']
+      cent = cells.nuc_cent[cells.nuc_cent$cell == name,]
+      return((atan2((px_y - cent$Cent_Y_pix[1]), (px_x - cent$Cent_X_pix[1]))*180)/pi)#index for formatting - multiple golgi/nuclei handled above in centroid calculation
+      #TODO - combine with dist_to_nuc
+    })
+    
+    #Golgi-based MDR
+    cell$dist_to_golgi = sapply(1:nrow(cell), function(px){ 
+      px_x = cell[px, 'x']
+      px_y = cell[px, 'y']
+      cent = cells.golgi_cent[cells.golgi_cent$cell == name,]
+      return(abs(sqrt((px_x - cent$Cent_X_pix[1])^2 + (px_y - cent$Cent_Y_pix[1])^2)))#index for formatting - multiple golgi/nuclei handled above in centroid calculation
+    })
+    cell$norm_to_golgi = cell$dist_to_golgi/(cell$dist_to_golgi + cell$dist_to_PM)
+    
+    #Golgi-based MDR NEAREST PIXEL
+    cell$dist_to_nearest_golgi = as.data.frame(mask(distance(golgi.rasters[[name]], target = NA), cells.rasters[[name]]))[,1]#distance to nearest golgi pixel
+    cell$norm_to_nearest_golgi = cell$dist_to_nearest_golgi/(cell$dist_to_nearest_golgi + cell$dist_to_PM)
+
+    cells.pixels[[name]] = cell
+  }
+  
+
+  
+  organelles.rasters = lapply(names(sf.other), function(o){ 
+    r = extend(rasterize(organelles.spatvectors[[o]], rast(organelles.spatvectors[[o]],res=1), field = 'rast_val'), 1) 
+    crs(r) <- 'local'
+    return(r)
+  })
+  names(organelles.rasters) = names(sf.other)
+  organelles.pixels = lapply(names(sf.other), function(o){ as.data.frame(organelles.rasters[[o]], xy = TRUE) })
+  names(organelles.pixels) = names(sf.other)
+  
+  for(n in names(organelles.pixels)){
+    organelles.pixels[[n]]$name = n
+    organelles.pixels[[n]]$type = measurements.other[measurements.other$ROI_name == n,]$Type[1]
+  }
+  
+  for(name in names(cells.pixels)){
+    cell = cells.pixels[[name]]
+    cell$golgi = FALSE
+    cell$nucleus = FALSE
+    cell$bac = FALSE
+    cell$ng = FALSE
+    cell$gb = FALSE
+    cell$bn = FALSE
+    cell.org = organelles.pixels[which(names(organelles.pixels) %in% other_to_cells[other_to_cells$cell == name,]$other)]
+    for (o in cell.org){
+      for(i in 1:nrow(o)){
+        o.px = o[i,]
+        cell.px = which(cell$x == o.px$x & cell$y == o.px$y)
+        cell[cell.px, o.px$type[1]] = TRUE
+      }
+    }
+    cell$name = name
+    cell$infected = name %in% infected
+    cells.pixels[[name]] = cell
+  }
+  
+  
+  cells.pixels.pooled = do.call(rbind, cells.pixels)
+  
+  per_cell = do.call(rbind, lapply(names(cells.pixels), function(n){
+    cell.condition = condition
+    cell.px = cells.pixels.pooled[cells.pixels.pooled$name == n,]
+    cell.golgi_norm = mean(cell.px[cell.px$golgi == TRUE,]$norm)
+    cell.bac_norm = mean(cell.px[cell.px$bac == TRUE,]$norm)
+    cell.bac_norm_to_golgi = mean(cell.px[cell.px$bac == TRUE,]$norm_to_golgi)
+    cell.bac_dist_to_nearest_golgi = mean(cell.px[cell.px$bac == TRUE,]$dist_to_nearest_golgi)
+    cell.bac_norm_to_nearest_golgi = mean(cell.px[cell.px$bac == TRUE,]$norm_to_nearest_golgi)
+    cell.golgi_area = nrow(cell.px[cell.px$golgi == TRUE,])#TODO - check against ImageJ measurements
+    cell.gb_area = nrow(cell.px[cell.px$gb == TRUE,])
+    
+    cell.golgi_count = nrow(other_to_cells[other_to_cells$cell == n & other_to_cells$type == 'golgi',])
+    cell.nucleus_count = nrow(other_to_cells[other_to_cells$cell == n & other_to_cells$type == 'nucleus',])
+    
+    cell.name = cell.px$name[1]
+    cell.infected = cell.px$infected[1]
+    
+    cell.area = measurements.cells[measurements.cells$ROI_name == cell.name,]$Area[1]
+    cell.circ = measurements.cells[measurements.cells$ROI_name == cell.name,]$Circ[1]
+    
+    cell.df = data.frame(
+      cond = cell.condition,
+      name = cell.name,
+      infected = cell.infected,
+      golgi_norm = cell.golgi_norm,
+      bac_norm = cell.bac_norm,
+      bac_norm_to_golgi = cell.bac_norm_to_golgi,
+      bac_dist_to_nearest_golgi = cell.bac_dist_to_nearest_golgi,
+      bac_norm_to_nearest_golgi = cell.bac_norm_to_nearest_golgi,
+      golgi_area = cell.golgi_area,
+      gb_area = cell.gb_area,
+      cell_area = cell.area,
+      cell_circ = cell.circ,
+      golgi_count = cell.golgi_count,
+      nucleus_count = cell.nucleus_count
+    )
+  }))
+  return(per_cell)
+  remove(per_cell)
+}))
+```
+
+Post-processing variables
+```{r post_cols}
+per_cell.all$date = sapply(per_cell.all$cond, function(s){strsplit(s, '_')[[1]][1]})
+per_cell.all$cell_line = as.factor(sapply(per_cell.all$cond, function(s){strsplit(s, '_')[[1]][2]}))
+per_cell.all$strain = as.factor(sapply(per_cell.all$cond, function(s){strsplit(s, '_')[[1]][3]}))
+per_cell.all$number = sapply(per_cell.all$cond, function(s){strsplit(s, '_')[[1]][4]})
+```
+
+Write output
+```{r save_CSV}
+write.csv(per_cell.all, paste0(dir, '\\organelle_analysis\\analysis_output.csv'))
+```
+
+
+#PLOTS
+```{r plots}
+ggplot(per_cell.all[per_cell.all$infected == T,], aes(x = strain, y = bac_norm_to_nearest_golgi, group = strain)) +
+  geom_dotplot(binwidth = 0.01, binaxis='y', stackdir='center') + geom_boxplot(fill = NA, outliers = F) + facet_wrap(~cell_line) + stat_compare_means()
+
+ggplot(per_cell.all[per_cell.all$infected == T,], aes(x = strain, y = bac_dist_to_nearest_golgi, group = strain)) +
+  geom_dotplot(binwidth = 0.01, binaxis='y', stackdir='center') + geom_boxplot(fill = NA, outliers = F) + facet_wrap(~cell_line) + stat_compare_means()
+
+
+
+ggplot(per_cell.all[per_cell.all$infected == T & per_cell.all$strain == 'CGS001',], aes(x = cell_line, y = bac_norm_to_golgi, group = cell_line)) +
+  geom_dotplot(binwidth = 0.01, binaxis='y', stackdir='center') + geom_boxplot(fill = NA, outliers = F) + stat_compare_means()
+
+ggplot(per_cell.all[per_cell.all$infected == T,], aes(x = strain, y = bac_norm, group = strain)) +
+  geom_dotplot(binwidth = 0.01, binaxis='y', stackdir='center') + geom_boxplot(fill = NA, outliers = F) + facet_wrap(~cell_line) + stat_compare_means()
+
+ggplot(per_cell.all[per_cell.all$infected == T,], aes(x = strain, y = golgi_norm, group = strain)) +
+  geom_dotplot(binwidth = 0.01, binaxis='y', stackdir='center') + geom_boxplot(fill = NA, outliers = F) + facet_wrap(~cell_line) + stat_compare_means()
+```
