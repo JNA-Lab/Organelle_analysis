@@ -6,13 +6,26 @@ import re
 
 #get folder and file information
 dc = DirectoryChooser("Select the folder with your segmented images")
-dir = dc.getDirectory()
-f = []
+datadir = dc.getDirectory()
 f_ext = set()
-for root, dirnames, filenames in os.walk(dir):
-	for filename in filenames:
-		f.append(filename) #f.append(os.path.join(root, filename))
-		f_ext.add(re.search(r"\.([A-Za-z0-9]+)$", filename).group(1))
+filenames = []
+
+for obj in os.listdir(datadir):
+	print(obj)
+	print(type(obj))
+	if os.path.isfile(datadir + "/" + obj):
+		print("found a file!")
+		filenames.append(obj)
+		f_ext.add(re.search(r"\.([A-Za-z0-9]+)$", obj).group(1))
+
+	
+#for root, dirnames, filenames in os.walk(dir):
+	#for filename in filenames:
+		#f_ext.add(re.search(r"\.([A-Za-z0-9]+)$", filename).group(1))
+
+#create analysis folder for output
+if not os.path.exists(datadir + "/analysis/"):
+	os.mkdir(datadir + "/analysis/")
 #-----
 
 #get processing options
@@ -23,7 +36,8 @@ options.addChoice('File extension', list(f_ext), "tif")
 options.addMessage("Select which organelles to analyse,and how they \nare represented in file names.");
 options.addCheckbox('Cell boundaries (required)', True)
 options.addToSameRow()
-options.addStringField('', 'cell')
+#options.addStringField('', 'cells')
+options.addStringField('', "_cp_masks")#TEMPORARY
 #for o in organelles:
 	#options.addCheckbox(o, True)
 	#options.addToSameRow()
@@ -62,27 +76,45 @@ if options.wasOKed():
 		raise Exception("Cell boundaries are required for processing organelle segmentations.")
 	cell_regex = options.getNextString()
 	org_bool = dict()
-	org_regex = dict()
+	org_regex = dict()#not actually regex - just using str.replace for now
 	for o in organelles:
 		org_bool[o] = options.getNextBoolean()
 		org_regex[o] = options.getNextString()
 	contacts_bool = options.getNextBoolean()
 	
-	#org_regex = [o for o, b in zip(org_regex, org_bool) if b]#removing match for non-selected organelles
+	org_regex = {k:v for (k,v), b in zip(org_regex.items(), list(org_bool.values())) if b == True}
+
 	
-else:
-	print("Cancelled")#TODO actually handle something here
 #-----
 
+filenames_filtered = [f for f in filenames if re.search(ext + "$", f)]#filter to files with the correct extension
+
 conditions = set()
-print(len(filenames))
-for f in filenames:#TODO - filter to selected extension
+for f in filenames_filtered:#TODO - filter to selected extension
 	f = f.replace("." + ext, "")
-	print(f)
 	for o in org_regex.values():
 		f = f.replace(o, "")#not actually regex matching - probably best for now
-	print(f)
+	f = f.replace(cell_regex, "")
 	conditions.add(f)
-print(len(conditions))
 
+print(len(org_regex))
 
+for c in conditions:
+	print(c)
+	#open images
+	c_filenames = [f for f in filenames if c in f]#find filenames matching condition
+	print(len(c_filenames))
+	for cf in c_filenames:
+		IJ.open(os.path.join(datadir, cf))
+		imp = IJ.getImage()
+		
+		try:
+			organelle = [k for k,v in org_regex.items() if v in cf][0]
+		except:
+			if cell_regex in cf:
+				organelle = "cells"
+			else:
+				imp.close()
+		
+		imp.setTitle(organelle)
+		
