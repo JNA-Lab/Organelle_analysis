@@ -1,8 +1,10 @@
 from ij import IJ
 from ij.gui import GenericDialog
 from ij.io import DirectoryChooser
+from ij.plugin.frame import RoiManager
 import os
 import re
+
 
 #get folder and file information
 dc = DirectoryChooser("Select the folder with your segmented images")
@@ -11,10 +13,7 @@ f_ext = set()
 filenames = []
 
 for obj in os.listdir(datadir):
-	print(obj)
-	print(type(obj))
 	if os.path.isfile(datadir + "/" + obj):
-		print("found a file!")
 		filenames.append(obj)
 		f_ext.add(re.search(r"\.([A-Za-z0-9]+)$", obj).group(1))
 
@@ -69,7 +68,7 @@ options.addMessage("\n\n")
 options.addCheckbox("Calculate pairwise overlaps?", True)
 options.showDialog()
 
-if options.wasOKed():
+if options.wasOKed():#is this necessary?
 	ext = options.getNextChoice()
 	cell_bool = options.getNextBoolean()
 	if cell_bool != True:
@@ -83,7 +82,12 @@ if options.wasOKed():
 	contacts_bool = options.getNextBoolean()
 	
 	org_regex = {k:v for (k,v), b in zip(org_regex.items(), list(org_bool.values())) if b == True}
-
+	organelles_selected = [o for o, b in zip(organelles, list(org_bool.values())) if b == True]
+	print(organelles_selected)
+	
+	#ROI groups
+	ROI_groups = dict(zip(organelles_selected, list(range(1, len(organelles_selected) + 1, 1))))
+	print(ROI_groups)
 	
 #-----
 
@@ -97,24 +101,54 @@ for f in filenames_filtered:#TODO - filter to selected extension
 	f = f.replace(cell_regex, "")
 	conditions.add(f)
 
-print(len(org_regex))
 
+#set up ROI manager
+RM = RoiManager()
+rm = RM.getRoiManager()
+
+
+#MAIN LOOP
 for c in conditions:
-	print(c)
-	#open images
+	#open and rename images
 	c_filenames = [f for f in filenames if c in f]#find filenames matching condition
-	print(len(c_filenames))
 	for cf in c_filenames:
 		IJ.open(os.path.join(datadir, cf))
-		imp = IJ.getImage()
-		
+		imp = IJ.getImage()		
 		try:
 			organelle = [k for k,v in org_regex.items() if v in cf][0]
-		except:
+		except:#index out of range - no match in organelles
 			if cell_regex in cf:
 				organelle = "cells"
 			else:
-				imp.close()
-		
+				imp.close()		
 		imp.setTitle(organelle)
+	
+
+	if "Golgi" in organelles_selected:#TODO - lowercase?
+		print("golgi block")
+		rm.setGroup(ROI_groups["Golgi"])
+		IJ.selectWindow("Golgi")
+		gol = IJ.getImage()
+		IJ.setRawThreshold(gol, 1, 65535)#specific for 16-bit images
+		IJ.run(gol, "Convert to Mask", "")
+		IJ.run(gol, "Analyze Particles...", "size=0-Infinity add composite")
+		rm.selectGroup(ROI_groups["Golgi"])
+		gol_roi_start = rm.getSelectedIndex()
+		print(gol_roi_start)
+		gol_roi_count = rm.selected()
+		print(gol_roi_count)
+		
+		
+	IJ.run("Close All", "")
+	rm.reset()
+	
+#	if "nucleus" in organelles_selected:
+#		rm.setGroup(ROI_groups["nucleus"])
+#		IJ.selectWindow("nucleus")
+#		nuc = IJ.getImage()
+#		IJ.setRawThreshold(nuc, 1, 65535)#specific for 16-bit images
+#		IJ.run(nuc, "Convert to Mask", "")
+#		IJ.run(nuc, "Analyze Particles...", "size=0-Infinity add composite")
+#		rm.selectGroup(ROI_groups["nucleus"])
+#		nuc_roi_start = rm.getIndex()
 		
