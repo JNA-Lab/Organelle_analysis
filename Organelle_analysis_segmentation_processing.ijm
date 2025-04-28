@@ -9,6 +9,7 @@ for (i = 0; i < img_list.length; i++) {
 	}
 }
 img_list_ext = ArrayUnique(img_list_ext);
+//TODO - condition matching
 //---------------
 
 //-----Options Dialog-----
