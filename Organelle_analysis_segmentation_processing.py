@@ -1,5 +1,5 @@
 from ij import IJ
-from ij.gui import GenericDialog
+from ij.gui import GenericDialog, NonBlockingGenericDialog, Roi
 from ij.io import DirectoryChooser
 from ij.plugin.frame import RoiManager
 import os
@@ -28,7 +28,7 @@ if not os.path.exists(datadir + "/analysis/"):
 #-----
 
 #get processing options
-organelles = ['nucleus', 'Golgi', 'peroxisomes', 'ER', 'mitochondria', 'lysosomes', 'bacteria']
+organelles = ['nuclei', 'Golgi', 'peroxisomes', 'ER', 'mitochondria', 'lysosomes', 'bacteria']
 
 options = GenericDialog('Options')
 options.addChoice('File extension', list(f_ext), "tif")
@@ -42,7 +42,7 @@ options.addStringField('', "_cp_masks")#TEMPORARY
 	#options.addToSameRow()
 	#options.addStringField('', o.lower())
 #***TEMPORARY***
-options.addCheckbox("nucleus", False)
+options.addCheckbox("nuclei", False)
 options.addToSameRow()
 options.addStringField("", "")
 options.addCheckbox("Golgi", True)
@@ -79,10 +79,15 @@ if options.wasOKed():#is this necessary?
 	for o in organelles:
 		org_bool[o] = options.getNextBoolean()
 		org_regex[o] = options.getNextString()
+	print(org_bool)
+	print(org_regex)
 	contacts_bool = options.getNextBoolean()
 	
 	org_regex = {k:v for (k,v), b in zip(org_regex.items(), list(org_bool.values())) if b == True}
-	organelles_selected = [o for o, b in zip(organelles, list(org_bool.values())) if b == True]
+	organelles_selected = []
+	for o in organelles:
+		if org_bool[o] == True:
+			organelles_selected.append(o)
 	print(organelles_selected)
 	
 	#ROI groups
@@ -107,38 +112,154 @@ RM = RoiManager()
 rm = RM.getRoiManager()
 
 
-#MAIN LOOP
+##MAIN LOOP
 for c in conditions:
-	#open and rename images
-	c_filenames = [f for f in filenames if c in f]#find filenames matching condition
-	for cf in c_filenames:
-		IJ.open(os.path.join(datadir, cf))
-		imp = IJ.getImage()		
-		try:
-			organelle = [k for k,v in org_regex.items() if v in cf][0]
-		except:#index out of range - no match in organelles
-			if cell_regex in cf:
-				organelle = "cells"
-			else:
-				imp.close()		
-		imp.setTitle(organelle)
+#	#open and rename images
+#	c_filenames = [f for f in filenames if c in f]#find filenames matching condition
+#	for cf in c_filenames:
+#		IJ.open(os.path.join(datadir, cf))
+#		imp = IJ.getImage()		
+#		try:
+#			organelle = [k for k,v in org_regex.items() if v in cf][0]
+#		except:#index out of range - no match in organelles
+#			if cell_regex in cf:
+#				organelle = "cells"
+#			else:
+#				imp.close()		
+#		imp.setTitle(organelle)
+#	
+#	#TODO - loop this properly
+#	if "nuclei" in organelles_selected:
+#		print("nuclei block")
+#		Roi.setDefaultGroup(ROI_groups["nuclei"])
+#		IJ.selectWindow("nuclei")
+#		nuc = IJ.getImage()
+#		IJ.setRawThreshold(nuc, 1, 65535)#specific for 16-bit images
+#		IJ.run(nuc, "Convert to Mask", "")
+#		IJ.run(nuc, "Analyze Particles...", "size=0-Infinity add composite")
+#		rm.selectGroup(ROI_groups["nucleus"])
+#		nuc_roi_start = rm.getSelectedIndex()
+#		nuc_roi_count = rm.selected()
+#		for i in range(nuc_roi_start, nuc_roi_start + nuc_roi_count, 1):
+#			rm.rename(i, "nucleus_" + str(i - nuc_roi_start + 1))
+#	
+#	if "Golgi" in organelles_selected:#TODO - lowercase?
+#		print("golgi block")
+#		Roi.setDefaultGroup(ROI_groups["Golgi"])
+#		IJ.selectWindow("Golgi")
+#		gol = IJ.getImage()
+#		IJ.setRawThreshold(gol, 1, 65535)#specific for 16-bit images
+#		IJ.run(gol, "Convert to Mask", "")
+#		IJ.run(gol, "Analyze Particles...", "size=0-Infinity add composite")
+#		rm.selectGroup(ROI_groups["Golgi"])
+#		gol_roi_start = rm.getSelectedIndex()
+#		gol_roi_count = rm.selected()
+#		for i in range(gol_roi_start, gol_roi_start + gol_roi_count, 1):
+#			rm.rename(i, "Golgi_" + str(i - gol_roi_start + 1))
+#	
+#	if "peroxisomes" in organelles_selected:
+#		print("perox block")
+#		Roi.setDefaultGroup(ROI_groups["peroxisomes"])
+#		IJ.selectWindow("peroxisomes")
+#		per = IJ.getImage()
+#		IJ.setRawThreshold(per, 1, 65535)#specific for 16-bit images
+#		IJ.run(per, "Convert to Mask", "")
+#		IJ.run(per, "Analyze Particles...", "size=0-Infinity add composite")
+#		rm.selectGroup(ROI_groups["peroxisomes"])
+#		per_roi_start = rm.getSelectedIndex()
+#		per_roi_count = rm.selected()
+#		for i in range(per_roi_start, per_roi_start + per_roi_count, 1):
+#			rm.rename(i, "perox_" + str(i - per_roi_start + 1))
+#			
+#	if "ER" in organelles_selected:#TODO - lowercase?
+#		print("ER block")
+#		Roi.setDefaultGroup(ROI_groups["ER"])
+#		IJ.selectWindow("ER")
+#		er = IJ.getImage()
+#		IJ.setRawThreshold(er, 1, 65535)#specific for 16-bit images
+#		IJ.run(er, "Convert to Mask", "")
+#		IJ.run(er, "Analyze Particles...", "size=0-Infinity add composite")
+#		rm.selectGroup(ROI_groups["ER"])
+#		er_roi_start = rm.getSelectedIndex()
+#		er_roi_count = rm.selected()
+#		for i in range(er_roi_start, er_roi_start + er_roi_count, 1):
+#			rm.rename(i, "er_" + str(i - er_roi_start + 1))
+#
+#	if "mitochondria" in organelles_selected:
+#		print("mito block")
+#		Roi.setDefaultGroup(ROI_groups["mitochondria"])
+#		IJ.selectWindow("mitochondria")
+#		mit = IJ.getImage()
+#		IJ.setRawThreshold(mit, 1, 65535)#specific for 16-bit images
+#		IJ.run(mit, "Convert to Mask", "")
+#		IJ.run(mit, "Analyze Particles...", "size=0-Infinity add composite")
+#		rm.selectGroup(ROI_groups["mitochondria"])
+#		mit_roi_start = rm.getSelectedIndex()
+#		mit_roi_count = rm.selected()
+#		for i in range(mit_roi_start, mit_roi_start + mit_roi_count, 1):
+#			rm.rename(i, "mito_" + str(i - mit_roi_start + 1))
+#
+#	if "lysosomes" in organelles_selected:
+#		print("lyso block")
+#		Roi.setDefaultGroup(ROI_groups["lysosomes"])
+#		IJ.selectWindow("lysosomes")
+#		lys = IJ.getImage()
+#		IJ.setRawThreshold(lys, 1, 65535)#specific for 16-bit images
+#		IJ.run(lys, "Convert to Mask", "")
+#		IJ.run(lys, "Analyze Particles...", "size=0-Infinity add composite")
+#		rm.selectGroup(ROI_groups["lysosomes"])
+#		lys_roi_start = rm.getSelectedIndex()
+#		lys_roi_count = rm.selected()
+#		for i in range(lys_roi_start, lys_roi_start + lys_roi_count, 1):
+#			rm.rename(i, "lys_" + str(i - lys_roi_start + 1))
+#
+#	if "bacteria" in organelles_selected:
+#		print("bac block")
+#		Roi.setDefaultGroup(ROI_groups["bacteria"])
+#		IJ.selectWindow("bacteria")
+#		bac = IJ.getImage()
+#		IJ.setRawThreshold(bac, 1, 65535)#specific for 16-bit images
+#		IJ.run(bac, "Convert to Mask", "")
+#		IJ.run(bac, "Analyze Particles...", "size=0-Infinity add composite")
+#		rm.selectGroup(ROI_groups["bacteria"])
+#		bac_roi_start = rm.getSelectedIndex()
+#		bac_roi_count = rm.selected()
+#		for i in range(bac_roi_start, bac_roi_start + bac_roi_count, 1):
+#			rm.rename(i, "bac_" + str(i - bac_roi_start + 1))
+		
 	
-
-	if "Golgi" in organelles_selected:#TODO - lowercase?
-		print("golgi block")
-		rm.setGroup(ROI_groups["Golgi"])
-		IJ.selectWindow("Golgi")
-		gol = IJ.getImage()
-		IJ.setRawThreshold(gol, 1, 65535)#specific for 16-bit images
-		IJ.run(gol, "Convert to Mask", "")
-		IJ.run(gol, "Analyze Particles...", "size=0-Infinity add composite")
-		rm.selectGroup(ROI_groups["Golgi"])
-		gol_roi_start = rm.getSelectedIndex()
-		print(gol_roi_start)
-		gol_roi_count = rm.selected()
-		print(gol_roi_count)
-		
-		
+	if contacts_bool == True:
+		pairwise_groups = {"ng": ("nuclei", "Golgi"),
+							"np": ("nuclei", "peroxisomes"),
+							"ne": ("nuclei", "ER"),
+							"nm": ("nuclei", "mitochondria"),
+							"nl": ("nuclei", "lysosomes"),
+							"nb": ("nuclei", "bacteria"),
+							"gp": ("Golgi", "peroxisomes"),
+							"ge":  ("Golgi", "ER"),
+							"gm": ("Golgi", "mitochondria"),
+							"gl": ("Golgi", "lysosomes"),
+							"gb": ("Golgi", "bacteria"),
+							"pe": ("peroxisomes", "ER"),
+							"pm": ("peroxisomes", "mitochondria"),
+							"pl": ("peroxisomes", "lysosomes"),
+							"pb": ("peroxisomes", "bacteria"),
+							"em": ("ER", "mitochondria"),
+							"el": ("ER", "lysosomes"),
+							"eb": ("ER", "bacteria"),
+							"ml": ("mitochondria", "lysosomes"),
+							"mb": ("mitochondria", "bacteria"),
+							"lb": ("lysosomes", "bacteria")}#TODO - ...
+		pairwise_ROI_groups = dict(zip(pairwise_groups.keys(), range(max(ROI_groups.values()) + 1, max(ROI_groups.values()) + 1 + len(pairwise_groups), 1)))
+		print(pairwise_ROI_groups)
+	
+	
+	
+	
+	
+	pause = NonBlockingGenericDialog('Pause')
+	pause.addMessage('Click OK when ready')
+	pause.showDialog()
 	IJ.run("Close All", "")
 	rm.reset()
 	
