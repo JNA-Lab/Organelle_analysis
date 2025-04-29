@@ -118,6 +118,7 @@ rm = RM.getRoiManager()
 for c in conditions:
 	#open and rename images
 	c_filenames = [f for f in filenames if c in f]#find filenames matching condition
+	c_cell_image = str()
 	for cf in c_filenames:
 		IJ.open(os.path.join(datadir, cf))
 		imp = IJ.getImage()		
@@ -125,10 +126,32 @@ for c in conditions:
 			organelle = [k for k,v in org_regex.items() if v in cf][0]
 		except:#index out of range - no match in organelles
 			if cell_regex in cf:
-				organelle = "cells"
-			else:
-				imp.close()		
+				c_cell_image = cf
+			imp.close()#close for now		
 		imp.setTitle(organelle)
+	
+	#ORGANELLE THRESHOLDING
+	#PAIRWISE OVERLAPS
+	#STACK
+	#LOAD CELL IMAGE
+	#Check max value
+	#Per step (cell) loop:
+		#duplicate cell image
+		#step threshold
+		#analyse particles
+		#duplicate stack by ROI
+		#re-add ROI, delete original
+		#select cell ROI, rename, clear outside
+		#analyse particles
+		#rename by slice/organelle/cell
+		#save ROIs
+		#measure
+		#save measurements
+		#clear ROIs, results, leave stack and cell image open (close duplicates)
+	
+	
+	
+	
 	
 	#TODO - loop this properly
 	if "nuclei" in organelles_selected:
