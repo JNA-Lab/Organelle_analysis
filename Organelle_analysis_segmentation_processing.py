@@ -2,7 +2,7 @@ from ij import IJ
 from ij.gui import GenericDialog, NonBlockingGenericDialog, Roi
 from ij.io import DirectoryChooser
 from ij.measure import ResultsTable
-from ij.plugin import ImageCalculator, ImagesToStack, StackEditor
+from ij.plugin import ImageCalculator, StackEditor
 from ij.plugin.frame import RoiManager
 import os
 import re
@@ -141,6 +141,7 @@ for f in filenames_filtered:#TODO - filter to selected extension
 #set up ROI manager
 RM = RoiManager()
 rm = RM.getRoiManager()
+SE = StackEditor()
 
 ##MAIN LOOP
 for c in conditions:
@@ -171,6 +172,7 @@ for c in conditions:
 	#PAIRWISE OVERLAPS
 	for combo in pairwise_groups.keys():
 		if set(pairwise_groups[combo]).issubset(organelles_selected):
+			print(combo + " calculation")
 			IJ.selectWindow(pairwise_groups[combo][0])
 			img1 = IJ.getImage()
 			IJ.selectWindow(pairwise_groups[combo][1])
@@ -180,7 +182,10 @@ for c in conditions:
 			images_to_stack.append(img3)
 	
 	#STACK
-	orgstack = ImagesToStack.run(images_to_stack)
+	NonBlockingGenericDialog("BREAK").showDialog()#debugging
+	SE.convertImagesToStack()#TODO - autonomous
+	IJ.selectWindow("Stack")
+	orgstack = IJ.getImage()
 		
 	#LOAD CELL IMAGE
 	IJ.open(os.path.join(datadir, c_cell_image))
@@ -209,7 +214,7 @@ for c in conditions:
 		rm.select(cell_crop, 0)
 		IJ.run(cell_crop, "Clear Outside", "stack");
 		#analyse particles per organelle/pair
-		StackEditor.convertStackToImages(cell_crop)
+		SE.convertStackToImages(cell_crop)
 		for org in organelles_selected:
 			print(org + " thresholding")
 			Roi.setDefaultGroup(ROI_groups[org])
