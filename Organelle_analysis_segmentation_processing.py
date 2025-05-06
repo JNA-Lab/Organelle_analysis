@@ -2,8 +2,9 @@ from ij import IJ
 from ij.gui import GenericDialog, NonBlockingGenericDialog, Roi
 from ij.io import DirectoryChooser
 from ij.measure import ResultsTable
-from ij.plugin import ImageCalculator, StackEditor
+from ij.plugin import ImageCalculator, StackEditor, ImagesToStack
 from ij.plugin.frame import RoiManager
+from java.awt import Color
 import os
 import re
 
@@ -81,8 +82,6 @@ if options.wasOKed():#is this necessary?
 	for o in organelles:
 		org_bool[o] = options.getNextBoolean()
 		org_regex[o] = options.getNextString()
-	print(org_bool)
-	print(org_regex)
 	contacts_bool = options.getNextBoolean()
 	
 	org_regex = {k:v for (k,v), b in zip(org_regex.items(), list(org_bool.values())) if b == True}
@@ -90,11 +89,10 @@ if options.wasOKed():#is this necessary?
 	for o in organelles:
 		if org_bool[o] == True:
 			organelles_selected.append(o)
-	print(organelles_selected)
 	
 	#ROI groups
-	ROI_groups = dict(zip(organelles_selected, list(range(1, len(organelles_selected) + 1, 1))))
-	print(ROI_groups)
+	ROI_groups = dict(zip(organelles_selected, list(range(2, len(organelles_selected) + 2, 1))))
+	ROI_groups["cells"] = 1
 	
 	#pairwise contact groups and ROI groups
 	if contacts_bool == True:
@@ -105,7 +103,7 @@ if options.wasOKed():#is this necessary?
 							"nl": ("nuclei", "lysosomes"),
 							"nb": ("nuclei", "bacteria"),
 							"gp": ("Golgi", "peroxisomes"),
-							"ge":  ("Golgi", "ER"),
+							"ge": ("Golgi", "ER"),
 							"gm": ("Golgi", "mitochondria"),
 							"gl": ("Golgi", "lysosomes"),
 							"gb": ("Golgi", "bacteria"),
@@ -120,7 +118,6 @@ if options.wasOKed():#is this necessary?
 							"mb": ("mitochondria", "bacteria"),
 							"lb": ("lysosomes", "bacteria")}#TODO - ...
 		pairwise_ROI_groups = dict(zip(pairwise_groups.keys(), range(max(ROI_groups.values()) + 1, max(ROI_groups.values()) + 1 + len(pairwise_groups), 1)))
-		print(pairwise_ROI_groups)
 	
 #-----
 
@@ -142,6 +139,7 @@ for f in filenames_filtered:#TODO - filter to selected extension
 RM = RoiManager()
 rm = RM.getRoiManager()
 SE = StackEditor()
+I2S = ImagesToStack()
 
 ##MAIN LOOP
 for c in conditions:
@@ -153,16 +151,16 @@ for c in conditions:
 		imp = IJ.getImage()		
 		try:
 			organelle = [k for k,v in org_regex.items() if v in cf][0]
+			imp.setTitle(organelle)
 		except:#index out of range - no match in organelles
 			if cell_regex in cf:
 				c_cell_image = cf
 			imp.close()#close for now		
-		imp.setTitle(organelle)
+		
 	
 	images_to_stack = []
 	#ORGANELLE THRESHOLDING
 	for org in organelles_selected:
-		print(org + " thresholding")
 		IJ.selectWindow(org)
 		org_img = IJ.getImage()
 		IJ.setRawThreshold(org_img, 1, (2^org_img.getBitDepth())-1)#will work for 8 or 16-bit; might break on 32-bit or RGB
@@ -172,7 +170,6 @@ for c in conditions:
 	#PAIRWISE OVERLAPS
 	for combo in pairwise_groups.keys():
 		if set(pairwise_groups[combo]).issubset(organelles_selected):
-			print(combo + " calculation")
 			IJ.selectWindow(pairwise_groups[combo][0])
 			img1 = IJ.getImage()
 			IJ.selectWindow(pairwise_groups[combo][1])
@@ -182,255 +179,91 @@ for c in conditions:
 			images_to_stack.append(img3)
 	
 	#STACK
-	NonBlockingGenericDialog("BREAK").showDialog()#debugging
-	SE.convertImagesToStack()#TODO - autonomous
-	IJ.selectWindow("Stack")
-	orgstack = IJ.getImage()
+#	NonBlockingGenericDialog("BREAK").showDialog()#debugging
+	orgstack = I2S.run(images_to_stack)
+	orgstack.setTitle("Organelles")
+	orgstack.show()
 		
 	#LOAD CELL IMAGE
 	IJ.open(os.path.join(datadir, c_cell_image))
 	cells = IJ.getImage()
+	cells.setTitle("Cells")
 	
 	#Check max value
-	cells_max = int(cells.getStatistics().max) #converting double to int - beware of rounding bugs	
+	cells_max = int(cells.getStatistics().max) #converting double to int - beware of rounding bugs
 	
 	#Per step (cell) loop:
-	for i in range(1, cells_max, 1):
+	for i in range(1, cells_max + 1, 1):
 		#duplicate cell image
 		cells_copy = cells.duplicate()
+		cells_copy.setTitle("cells_DUPLICATE")
+		cells_copy.show()
+		cells.hide()
 		#step threshold
 		IJ.setRawThreshold(cells_copy, i, i)
 		#analyse particles
+		Roi.setDefaultGroup(ROI_groups["cells"])#TODO - dynamic?
 		IJ.run(cells_copy, "Analyze Particles...", "size=0-Infinity add composite") #should just be one cell
-		#duplicate stack by ROI
-		rm.select(0)#CHECK THIS
-		cell_crop = orgstack.crop("stack")#CHECK if cropped or duplicated
-		#re-add ROI, delete original
-		rm.runCommand("Add")#how to specify auto-generated selection as ROI?
-		rm.select(0)
-		rm.runCommand("Delete")
+		#duplicate stack and clear outside ROI - NOT CROPPING - keep coordinates consistent
+		cell_crop = orgstack.duplicate()
+		cell_crop.setTitle("organelles_DUPLICATE")
+		cell_crop.show()
+		orgstack.hide()
 		#select cell ROI, rename, clear outside
-		rm.rename(0, "cell_" + str(i))#CHECK INDEXING
+		rm.select(0)
+		cell_id = "cell_" + str(i)
+		rm.rename(0, cell_id)#CHECK INDEXING
 		rm.select(cell_crop, 0)
 		IJ.run(cell_crop, "Clear Outside", "stack");
 		#analyse particles per organelle/pair
 		SE.convertStackToImages(cell_crop)
 		for org in organelles_selected:
-			print(org + " thresholding")
 			Roi.setDefaultGroup(ROI_groups[org])
 			IJ.selectWindow(org)
 			org_img = IJ.getImage()
 			IJ.run(org_img, "Analyze Particles...", "size=0-Infinity add composite")
 			#rename by slice/organelle/cell
+			rm.deselect()
 			rm.selectGroup(ROI_groups[org])
 			roi_start = rm.getSelectedIndex()
 			roi_count = rm.selected()
-			for i in range(roi_start, roi_start + roi_count, 1):
-				rm.rename(i, org + "_" + str(i - roi_start + 1))
+			if roi_count > 0:
+				for i in range(roi_start, roi_start + roi_count, 1):
+					rm.rename(i, cell_id + "_" + org + "_" + str(i - roi_start + 1))
+			org_img.close()#TODO - move below?
 		for combo in pairwise_groups.keys():
 			if set(pairwise_groups[combo]).issubset(organelles_selected):
 				Roi.setDefaultGroup(pairwise_ROI_groups[combo])
 				IJ.selectWindow(combo)
 				combo_img = IJ.getImage()
 				IJ.run(combo_img, "Analyze Particles...", "size=0-Infinity add composite")
+				rm.deselect()
 				rm.selectGroup(pairwise_ROI_groups[combo])
 				combo_roi_start = rm.getSelectedIndex()
 				combo_roi_count = rm.selected()
-				for i in range(combo_roi_start, combo_roi_start + combo_roi_count, 1):
-					rm.rename(i, combo + "_" + str(i - combo_roi_start + 1))
+				if combo_roi_count > 0:
+					for i in range(combo_roi_start, combo_roi_start + combo_roi_count, 1):
+						rm.rename(i, cell_id + "_" + combo + "_" + str(i - combo_roi_start + 1))
+				combo_img.close()#TODO - move below?		
 		
 		#save ROIs
 		rm.runCommand("Select All")
-		rm.save(datadir + "/analysis/" + c + "_cell" + i + "_ROIs.zip")
+		rm.save(datadir + "/analysis/" + c + "_" + cell_id + "_ROIs.zip")
 		#measure
 		IJ.run("Set Measurements...", "area mean min centroid center shape feret's skewness kurtosis display redirect=None decimal=3")
 		rm.runCommand("Select All")#should be redundant
 		rm.runCommand("Measure")
 		#save measurements
 		results = ResultsTable.getResultsTable()
-		results.save(datadir + "/analysis/" + c + "_cell" + i + "_results.csv")
+		results.save(datadir + "/analysis/" + c + "_" + cell_id + "_results.csv")
 		
 		#clear ROIs, results, leave stack and cell image open (close duplicates)
+		cells_copy.close()
 		cell_crop.close()
 		rm.reset()
 		results.reset()
 		
+		cells.show()
+		orgstack.show()
 		
-		
-		
-	
-	
-	
-	
-##******************OLD ORGANELLE PROCESSING CODE*******************************	
-#	#TODO - loop this properly
-#	if "nuclei" in organelles_selected:
-#		print("nuclei block")
-#		Roi.setDefaultGroup(ROI_groups["nuclei"])
-#		IJ.selectWindow("nuclei")
-#		nuc = IJ.getImage()
-#		IJ.setRawThreshold(nuc, 1, 65535)#specific for 16-bit images
-#		IJ.run(nuc, "Convert to Mask", "")
-#		IJ.run(nuc, "Analyze Particles...", "size=0-Infinity add composite")
-#		rm.selectGroup(ROI_groups["nucleus"])
-#		nuc_roi_start = rm.getSelectedIndex()
-#		nuc_roi_count = rm.selected()
-#		for i in range(nuc_roi_start, nuc_roi_start + nuc_roi_count, 1):
-#			rm.rename(i, "nucleus_" + str(i - nuc_roi_start + 1))
-#	
-#	if "Golgi" in organelles_selected:#TODO - lowercase?
-#		print("golgi block")
-#		Roi.setDefaultGroup(ROI_groups["Golgi"])
-#		IJ.selectWindow("Golgi")
-#		gol = IJ.getImage()
-#		IJ.setRawThreshold(gol, 1, 65535)#specific for 16-bit images
-#		IJ.run(gol, "Convert to Mask", "")
-#		IJ.run(gol, "Analyze Particles...", "size=0-Infinity add composite")
-#		rm.selectGroup(ROI_groups["Golgi"])
-#		gol_roi_start = rm.getSelectedIndex()
-#		gol_roi_count = rm.selected()
-#		for i in range(gol_roi_start, gol_roi_start + gol_roi_count, 1):
-#			rm.rename(i, "Golgi_" + str(i - gol_roi_start + 1))
-#	
-#	if "peroxisomes" in organelles_selected:
-#		print("perox block")
-#		Roi.setDefaultGroup(ROI_groups["peroxisomes"])
-#		IJ.selectWindow("peroxisomes")
-#		per = IJ.getImage()
-#		IJ.setRawThreshold(per, 1, 65535)#specific for 16-bit images
-#		IJ.run(per, "Convert to Mask", "")
-#		IJ.run(per, "Analyze Particles...", "size=0-Infinity add composite")
-#		rm.selectGroup(ROI_groups["peroxisomes"])
-#		per_roi_start = rm.getSelectedIndex()
-#		per_roi_count = rm.selected()
-#		for i in range(per_roi_start, per_roi_start + per_roi_count, 1):
-#			rm.rename(i, "perox_" + str(i - per_roi_start + 1))
-#			
-#	if "ER" in organelles_selected:#TODO - lowercase?
-#		print("ER block")
-#		Roi.setDefaultGroup(ROI_groups["ER"])
-#		IJ.selectWindow("ER")
-#		er = IJ.getImage()
-#		IJ.setRawThreshold(er, 1, 65535)#specific for 16-bit images
-#		IJ.run(er, "Convert to Mask", "")
-#		IJ.run(er, "Analyze Particles...", "size=0-Infinity add composite")
-#		rm.selectGroup(ROI_groups["ER"])
-#		er_roi_start = rm.getSelectedIndex()
-#		er_roi_count = rm.selected()
-#		for i in range(er_roi_start, er_roi_start + er_roi_count, 1):
-#			rm.rename(i, "ER_" + str(i - er_roi_start + 1))
-#
-#	if "mitochondria" in organelles_selected:
-#		print("mito block")
-#		Roi.setDefaultGroup(ROI_groups["mitochondria"])
-#		IJ.selectWindow("mitochondria")
-#		mit = IJ.getImage()
-#		IJ.setRawThreshold(mit, 1, 65535)#specific for 16-bit images
-#		IJ.run(mit, "Convert to Mask", "")
-#		IJ.run(mit, "Analyze Particles...", "size=0-Infinity add composite")
-#		rm.selectGroup(ROI_groups["mitochondria"])
-#		mit_roi_start = rm.getSelectedIndex()
-#		mit_roi_count = rm.selected()
-#		for i in range(mit_roi_start, mit_roi_start + mit_roi_count, 1):
-#			rm.rename(i, "mito_" + str(i - mit_roi_start + 1))
-#
-#	if "lysosomes" in organelles_selected:
-#		print("lyso block")
-#		Roi.setDefaultGroup(ROI_groups["lysosomes"])
-#		IJ.selectWindow("lysosomes")
-#		lys = IJ.getImage()
-#		IJ.setRawThreshold(lys, 1, 65535)#specific for 16-bit images
-#		IJ.run(lys, "Convert to Mask", "")
-#		IJ.run(lys, "Analyze Particles...", "size=0-Infinity add composite")
-#		rm.selectGroup(ROI_groups["lysosomes"])
-#		lys_roi_start = rm.getSelectedIndex()
-#		lys_roi_count = rm.selected()
-#		for i in range(lys_roi_start, lys_roi_start + lys_roi_count, 1):
-#			rm.rename(i, "lyso_" + str(i - lys_roi_start + 1))
-#
-#	if "bacteria" in organelles_selected:
-#		print("bac block")
-#		Roi.setDefaultGroup(ROI_groups["bacteria"])
-#		IJ.selectWindow("bacteria")
-#		bac = IJ.getImage()
-#		IJ.setRawThreshold(bac, 1, 65535)#specific for 16-bit images
-#		IJ.run(bac, "Convert to Mask", "")
-#		IJ.run(bac, "Analyze Particles...", "size=0-Infinity add composite")
-#		rm.selectGroup(ROI_groups["bacteria"])
-#		bac_roi_start = rm.getSelectedIndex()
-#		bac_roi_count = rm.selected()
-#		for i in range(bac_roi_start, bac_roi_start + bac_roi_count, 1):
-#			rm.rename(i, "bac_" + str(i - bac_roi_start + 1))
-#		
-#	
-#	if contacts_bool == True:
-#		pairwise_groups = {"ng": ("nuclei", "Golgi"),
-#							"np": ("nuclei", "peroxisomes"),
-#							"ne": ("nuclei", "ER"),
-#							"nm": ("nuclei", "mitochondria"),
-#							"nl": ("nuclei", "lysosomes"),
-#							"nb": ("nuclei", "bacteria"),
-#							"gp": ("Golgi", "peroxisomes"),
-#							"ge":  ("Golgi", "ER"),
-#							"gm": ("Golgi", "mitochondria"),
-#							"gl": ("Golgi", "lysosomes"),
-#							"gb": ("Golgi", "bacteria"),
-#							"pe": ("peroxisomes", "ER"),
-#							"pm": ("peroxisomes", "mitochondria"),
-#							"pl": ("peroxisomes", "lysosomes"),
-#							"pb": ("peroxisomes", "bacteria"),
-#							"em": ("ER", "mitochondria"),
-#							"el": ("ER", "lysosomes"),
-#							"eb": ("ER", "bacteria"),
-#							"ml": ("mitochondria", "lysosomes"),
-#							"mb": ("mitochondria", "bacteria"),
-#							"lb": ("lysosomes", "bacteria")}#TODO - ...
-#		pairwise_ROI_groups = dict(zip(pairwise_groups.keys(), range(max(ROI_groups.values()) + 1, max(ROI_groups.values()) + 1 + len(pairwise_groups), 1)))
-#		print(pairwise_ROI_groups)
-#		
-#		for combo in pairwise_groups.keys():
-#			if set(pairwise_groups[combo]).issubset(organelles_selected):
-#				Roi.setDefaultGroup(pairwise_ROI_groups[combo])
-#				IJ.selectWindow(pairwise_groups[combo][0])
-#				img1 = IJ.getImage()
-#				IJ.selectWindow(pairwise_groups[combo][1])
-#				img2 = IJ.getImage()
-#				img3 = ImageCalculator.run(img1, img2, "AND create")
-#				IJ.run(img3, "Analyze Particles...", "size=0-Infinity add composite")
-#				rm.selectGroup(pairwise_ROI_groups[combo])
-#				combo_roi_start = rm.getSelectedIndex()
-#				combo_roi_count = rm.selected()
-#				for i in range(combo_roi_start, combo_roi_start + combo_roi_count, 1):
-#					rm.rename(i, combo + "_" + str(i - combo_roi_start + 1))
-#		
-#	#************************************************
-#	
-#	
-#	#Save ROIs
-#	rm.runCommand("Select All")
-#	rm.save(datadir + "/analysis/" + c + "_ROIs.zip")
-#	#Measure
-#	IJ.run("Set Measurements...", "area mean min centroid center shape feret's skewness kurtosis display redirect=None decimal=3")
-#	rm.runCommand("Select All")#should be redundant
-#	rm.runCommand("Measure")
-#	results = ResultsTable.getResultsTable()
-#	results.save(datadir + "/analysis/" + c + "_results.csv")
-#	#TODO - clean up table
-#	
-#	pause = NonBlockingGenericDialog('Pause')
-#	pause.addMessage('Click OK when ready')
-#	pause.showDialog()
-#	IJ.run("Close All", "")
-#	rm.reset()
-#	results.reset()
-#	
-#	if "nucleus" in organelles_selected:
-#		rm.setGroup(ROI_groups["nucleus"])
-#		IJ.selectWindow("nucleus")
-#		nuc = IJ.getImage()
-#		IJ.setRawThreshold(nuc, 1, 65535)#specific for 16-bit images
-#		IJ.run(nuc, "Convert to Mask", "")
-#		IJ.run(nuc, "Analyze Particles...", "size=0-Infinity add composite")
-#		rm.selectGroup(ROI_groups["nucleus"])
-#		nuc_roi_start = rm.getIndex()
-		
+	IJ.run("Close All", "")
