@@ -32,39 +32,24 @@ dir <- choose.dir() #WINDOWS ONLY - TODO Mac support with tk option - https://st
 Identify conditions for matching and iterating over ROI/measurement files
 ```{r conditions}
 files <- list.files(dir, pattern = ('\\.csv$|\\.zip$'), recursive = FALSE, include.dirs = FALSE)
-conditions <- unique(gsub('_analysis.csv||_ROIs.zip', '', files))
+condcells <- unique(gsub('_results.csv||_ROIs.zip', '', files))#updated for cell-cy-cell processing
 ```
 
-Identify features segmented
-```{r features}
-has_cells <- TRUE #REQUIRED
-has_nuclei <- TRUE
-has_Golgi <- TRUE
-has_peroxisomes <- FALSE
-has_ER <- FALSE
-has_mito <- FALSE
-has_lyso <- FALSE
-has_bacteria <- TRUE
-
-has_pairwise_mcs <- FALSE
-has_multi_mcs <- FALSE
-```
-
-Identify files for each condition
+Identify files for each condition/cell
 ```{r file_matching}
 #currently reading in all data - consider moving into loop if too much in memory at once
-conditions.data <- lapply(conditions, function(condition){
-  print(condition)
+condcells.data <- lapply(condcells, function(condc){
+  print(condc)
   c <- list()
-  measurements <- read.csv(paste0(dir, '\\', condition, '_analysis.csv'))
-  measurements$ROI_name <- unlist(regmatches(measurements$ID, regexec("(?<=:).+(?=:)?", measurements$ID, perl = T)))
+  measurements <- read.csv(paste0(dir, '\\', condc, '_results.csv'))
+  measurements$ROI_name <- unlist(regmatches(measurements$Label, regexec("(?<=:).+(?=:)?", measurements$Label, perl = T)))
   #TODO - this might break if trailing : missing - dependent on single/multi channel image - should be consistent with macro
-  measurements.cells = measurements[measurements$Type == 'cell',]
-  measurements.other = measurements[measurements$Type != 'cell',]
+  measurements.cells = measurements[measurements$Type == 'cells',]
+  measurements.other = measurements[measurements$Type != 'cells',]
   
-  ROIs = read.ijzip(paste0(dir, '\\', condition, '_ROIs.zip'), names = TRUE)
-  ROIs.cells <- ROIs[measurements[measurements$Type == 'cell',]$ROI_name]
-  ROIs.other <- ROIs[measurements[measurements$Type != 'cell',]$ROI_name]
+  ROIs = read.ijzip(paste0(dir, '\\', condc, '_ROIs.zip'), names = TRUE)
+  ROIs.cells <- ROIs[measurements[measurements$Type == 'cells',]$ROI_name]
+  ROIs.other <- ROIs[measurements[measurements$Type != 'cells',]$ROI_name]
   remove(ROIs)
   remove(measurements)
   
@@ -74,7 +59,7 @@ conditions.data <- lapply(conditions, function(condition){
   c[['ROIs.other']] <- ROIs.other
   return(c)
 })
-names(conditions.data) = conditions
+names(condcells.data) = condcells
 ```
 
 Defining function for converting ImageJ ROIs into sf polygons
