@@ -163,7 +163,7 @@ for c in conditions:
 	for org in organelles_selected:
 		IJ.selectWindow(org)
 		org_img = IJ.getImage()
-		IJ.setRawThreshold(org_img, 1, (2^org_img.getBitDepth())-1)#will work for 8 or 16-bit; might break on 32-bit or RGB
+		IJ.setRawThreshold(org_img, 1, (2**org_img.getBitDepth())-1)#will work for 8 or 16-bit; might break on 32-bit or RGB
 		IJ.run(org_img, "Convert to Mask", "")
 		images_to_stack.append(org_img)
 		
@@ -204,17 +204,27 @@ for c in conditions:
 		#analyse particles
 		Roi.setDefaultGroup(ROI_groups["cells"])#TODO - dynamic?
 		IJ.run(cells_copy, "Analyze Particles...", "size=0-Infinity add composite") #should just be one cell
-		#duplicate stack and clear outside ROI - NOT CROPPING - keep coordinates consistent
-		cell_crop = orgstack.duplicate()
-		cell_crop.setTitle("organelles_DUPLICATE")
-		cell_crop.show()
-		orgstack.hide()
-		#select cell ROI, rename, clear outside
+		#SOME CELLS RETURNING >1 - combine
+		if rm.getCount() > 1:
+			rm.selectGroup(ROI_groups["cells"])			
+			rm.runCommand("Combine")
+			rm.addRoi(cells_copy.getRoi())
+			#delete non-combined ROIs
+			rm.setSelectedIndexes(range(0, rm.getCount()-1, 1))#all but last
+			rm.runCommand("Delete")
+		#duplicate stack and clear outside ROI
 		rm.select(0)
 		cell_id = "cell_" + str(i)
-		rm.rename(0, cell_id)#CHECK INDEXING
+		cell_crop = orgstack.crop([rm.getRoi(0)], "stack")[0]
+		cell_crop.show()
+		orgstack.hide()
+		rm.addRoi(cell_crop.getRoi())#cell boundary in cropped image
+		rm.select(0)
+		rm.runCommand("Delete")#deleting original cell boundary - now in wrong place in cropped image
+		rm.rename(0, cell_id)
 		rm.select(cell_crop, 0)
-		IJ.run(cell_crop, "Clear Outside", "stack");
+		IJ.run(cell_crop, "Clear Outside", "stack")
+		
 		#analyse particles per organelle/pair
 		SE.convertStackToImages(cell_crop)
 		for org in organelles_selected:
@@ -244,26 +254,38 @@ for c in conditions:
 				if combo_roi_count > 0:
 					for i in range(combo_roi_start, combo_roi_start + combo_roi_count, 1):
 						rm.rename(i, cell_id + "_" + combo + "_" + str(i - combo_roi_start + 1))
-				combo_img.close()#TODO - move below?		
+				combo_img.close()#TODO - move below?	
+				
+		#save cropped stack
+		IJ.saveAs(cell_crop, "Tiff", datadir + "/analysis/" + c + "_" + cell_id + "_stack.tif")
 		
 		#save ROIs
 		rm.runCommand("Select All")
 		rm.save(datadir + "/analysis/" + c + "_" + cell_id + "_ROIs.zip")
+		
 		#measure
 		IJ.run("Set Measurements...", "area mean min centroid center shape feret's skewness kurtosis display redirect=None decimal=3")
 		rm.runCommand("Select All")#should be redundant
-		rm.runCommand("Measure")
-		#save measurements
+		rm.runCommand("Measure")				
 		results = ResultsTable.getResultsTable()
+		#add groups for processing in R
+		full_ROI_groups = dict(ROI_groups, **pairwise_ROI_groups)#combine
+		groups_to_type = {v:k for k, v in full_ROI_groups.items()}
+		for i in range(0, results.size(), 1):
+			results.setValue("Type", i, groups_to_type[int(results.getValue("Group", i))])
+		#save measurements
 		results.save(datadir + "/analysis/" + c + "_" + cell_id + "_results.csv")
 		
 		#clear ROIs, results, leave stack and cell image open (close duplicates)
 		cells_copy.close()
 		cell_crop.close()
-		rm.reset()
-		results.reset()
 		
 		cells.show()
 		orgstack.show()
 		
-	IJ.run("Close All", "")
+		rm.reset()
+		results.reset()
+		
+		
+		
+	#IJ.run("Close All", "")
