@@ -241,8 +241,10 @@ for c in conditions:
 				for i in range(roi_start, roi_start + roi_count, 1):
 					rm.rename(i, cell_id + "_" + org + "_" + str(i - roi_start + 1))
 			org_img.close()#TODO - move below?
+		combo_present = []
 		for combo in pairwise_groups.keys():
 			if set(pairwise_groups[combo]).issubset(organelles_selected):
+				combo_present.append(combo)
 				Roi.setDefaultGroup(pairwise_ROI_groups[combo])
 				IJ.selectWindow(combo)
 				combo_img = IJ.getImage()
@@ -275,6 +277,42 @@ for c in conditions:
 			results.setValue("Type", i, groups_to_type[int(results.getValue("Group", i))])
 		#save measurements
 		results.save(datadir + "/analysis/" + c + "_" + cell_id + "_results.csv")
+		
+		
+		#POOLED ROI ANALYSIS
+		all_ROI_groups = ROI_groups#includes only selected organelles
+		for combo in combo_present:#from section above - checks whether both organelles in pair are selected
+			all_ROI_groups[combo] = pairwise_ROI_groups[combo]	
+		print(all_ROI_groups)
+		for r in all_ROI_groups.keys():#includes pairwise overlap groups
+			print(r)
+			Roi.setDefaultGroup(all_ROI_groups[r])
+			rm.selectGroup(all_ROI_groups[r])
+			r_nselected = len(rm.getSelectedIndexes())
+			if (r_nselected != rm.getCount()) & (r_nselected > 1):
+				print(rm.getIndexesAsString())
+				rm.runCommand("Combine")
+				rm.addRoi(cells_copy.getRoi())
+				rm.selectGroup(all_ROI_groups[r])
+				print(rm.getIndexesAsString())
+				#delete non-combined ROIs
+				r_all = rm.getSelectedIndexes()
+				r_last = r_all.pop(-1)
+				r_individual = r_all[:-1]
+				print("r_all = " + str(r_all))
+				print("r_last = " + str(r_last))
+				rm.rename(r_last, cell_id + "_" + r)
+				rm.setSelectedIndexes(r_individual)#all but last
+				rm.runCommand("Delete")	
+				rm.selectGroup(all_ROI_groups[r])
+				print(rm.getIndexesAsString())
+		#save ROIs
+		rm.runCommand("Select All")
+		rm.save(datadir + "/analysis/" + c + "_" + cell_id + "_POOLED_ROIs.zip")	
+		#MEASUREMENTS
+		
+		
+		
 		
 		#clear ROIs, results, leave stack and cell image open (close duplicates)
 		cells_copy.close()
