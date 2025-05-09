@@ -259,6 +259,7 @@ for c in conditions:
 				combo_img.close()#TODO - move below?	
 				
 		#save cropped stack
+		cell_crop.show()#for pooled ROI measurements
 		IJ.saveAs(cell_crop, "Tiff", datadir + "/analysis/" + c + "_" + cell_id + "_stack.tif")
 		
 		#save ROIs
@@ -283,35 +284,49 @@ for c in conditions:
 		all_ROI_groups = ROI_groups#includes only selected organelles
 		for combo in combo_present:#from section above - checks whether both organelles in pair are selected
 			all_ROI_groups[combo] = pairwise_ROI_groups[combo]	
-		print(all_ROI_groups)
 		for r in all_ROI_groups.keys():#includes pairwise overlap groups
-			print(r)
+			print r
 			Roi.setDefaultGroup(all_ROI_groups[r])
 			rm.selectGroup(all_ROI_groups[r])
 			r_nselected = len(rm.getSelectedIndexes())
-			if (r_nselected != rm.getCount()) & (r_nselected > 1):
+			print("n selected = " + str(r_nselected))
+			if (r_nselected != rm.getCount()) and (r_nselected > 1):
+				print("multiple hits")
 				print(rm.getIndexesAsString())
 				rm.runCommand("Combine")
-				rm.addRoi(cells_copy.getRoi())
+				rm.addRoi(cell_crop.getRoi())#IMPORTANT - depends on cell_crop.show() above
 				rm.selectGroup(all_ROI_groups[r])
 				print(rm.getIndexesAsString())
 				#delete non-combined ROIs
 				r_all = rm.getSelectedIndexes()
 				r_last = r_all.pop(-1)
 				r_individual = r_all[:-1]
-				print("r_all = " + str(r_all))
-				print("r_last = " + str(r_last))
 				rm.rename(r_last, cell_id + "_" + r)
 				rm.setSelectedIndexes(r_individual)#all but last
 				rm.runCommand("Delete")	
 				rm.selectGroup(all_ROI_groups[r])
 				print(rm.getIndexesAsString())
-		#save ROIs
+			elif (r_nselected != rm.getCount()) and (r_nselected == 1):#rename singlets from cell_r_1get
+				print("single hit")
+				print(rm.getSelectedIndex())
+				rm.rename(rm.getSelectedIndex(), cell_id + "_" + r)
+		
+				#save ROIs
 		rm.runCommand("Select All")
-		rm.save(datadir + "/analysis/" + c + "_" + cell_id + "_POOLED_ROIs.zip")	
+		rm.save(datadir + "/analysis/" + c + "_" + cell_id + "_POOLED_ROIs.zip")
+		
 		#MEASUREMENTS
-		
-		
+		results.reset()#might need to close for next line to work properly
+		IJ.run("Set Measurements...", "area centroid center shape feret's skewness kurtosis display redirect=None decimal=3")
+		rm.runCommand("Select All")#should be redundant
+		rm.runCommand("Measure")
+		#add groups for processing in R - copied from above
+		full_ROI_groups = dict(ROI_groups, **pairwise_ROI_groups)#combine
+		groups_to_type = {v:k for k, v in full_ROI_groups.items()}
+		for i in range(0, results.size(), 1):
+			results.setValue("Type", i, groups_to_type[int(results.getValue("Group", i))])
+		#save measurements
+		results.save(datadir + "/analysis/" + c + "_" + cell_id + "_POOLED_results.csv")
 		
 		
 		#clear ROIs, results, leave stack and cell image open (close duplicates)
@@ -326,4 +341,7 @@ for c in conditions:
 		
 		
 		
-	#IJ.run("Close All", "")
+	IJ.run("Close All", "")
+	rm.close()
+	IJ.selectWindow("Results")
+	IJ.run("Close")
