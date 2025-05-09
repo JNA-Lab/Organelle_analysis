@@ -2,8 +2,9 @@ from ij import IJ
 from ij.gui import GenericDialog, NonBlockingGenericDialog, Roi
 from ij.io import DirectoryChooser
 from ij.measure import ResultsTable
-from ij.plugin import ImageCalculator, StackEditor, ImagesToStack
+from ij.plugin import ImageCalculator, StackEditor, ImagesToStack, SubstackMaker, ZProjector
 from ij.plugin.frame import RoiManager
+from ij.plugin.filter import ParticleAnalyzer
 from java.awt import Color
 import os
 import re
@@ -44,7 +45,7 @@ options.addStringField('', "_cp_masks")#TEMPORARY
 	#options.addCheckbox(o, True)
 	#options.addToSameRow()
 	#options.addStringField('', o.lower())
-#***TEMPORARY***
+#***TEMPORARY***#TODO - variables for saving in custom values
 options.addCheckbox("nuclei", False)
 options.addToSameRow()
 options.addStringField("", "")
@@ -140,6 +141,8 @@ RM = RoiManager()
 rm = RM.getRoiManager()
 SE = StackEditor()
 I2S = ImagesToStack()
+SM = SubstackMaker()
+PA = ParticleAnalyzer()
 
 ##MAIN LOOP
 for c in conditions:
@@ -285,18 +288,13 @@ for c in conditions:
 		for combo in combo_present:#from section above - checks whether both organelles in pair are selected
 			all_ROI_groups[combo] = pairwise_ROI_groups[combo]	
 		for r in all_ROI_groups.keys():#includes pairwise overlap groups
-			print r
 			Roi.setDefaultGroup(all_ROI_groups[r])
 			rm.selectGroup(all_ROI_groups[r])
 			r_nselected = len(rm.getSelectedIndexes())
-			print("n selected = " + str(r_nselected))
 			if (r_nselected != rm.getCount()) and (r_nselected > 1):
-				print("multiple hits")
-				print(rm.getIndexesAsString())
 				rm.runCommand("Combine")
 				rm.addRoi(cell_crop.getRoi())#IMPORTANT - depends on cell_crop.show() above
 				rm.selectGroup(all_ROI_groups[r])
-				print(rm.getIndexesAsString())
 				#delete non-combined ROIs
 				r_all = rm.getSelectedIndexes()
 				r_last = r_all.pop(-1)
@@ -305,10 +303,7 @@ for c in conditions:
 				rm.setSelectedIndexes(r_individual)#all but last
 				rm.runCommand("Delete")	
 				rm.selectGroup(all_ROI_groups[r])
-				print(rm.getIndexesAsString())
 			elif (r_nselected != rm.getCount()) and (r_nselected == 1):#rename singlets from cell_r_1get
-				print("single hit")
-				print(rm.getSelectedIndex())
 				rm.rename(rm.getSelectedIndex(), cell_id + "_" + r)
 		
 				#save ROIs
@@ -325,10 +320,32 @@ for c in conditions:
 		groups_to_type = {v:k for k, v in full_ROI_groups.items()}
 		for i in range(0, results.size(), 1):
 			results.setValue("Type", i, groups_to_type[int(results.getValue("Group", i))])
+		
 		#save measurements
 		results.save(datadir + "/analysis/" + c + "_" + cell_id + "_POOLED_results.csv")
 		
+						
+		#max intensity stacks for total area covered
+		results.reset()
+		_, _, _, nSlices, _ = cell_crop.getDimensions()
+		slicenames = dict()
+		for i in range(1, nSlices + 1, 1):
+			slicenames[cell_crop.getImageStack().getSliceLabel(i)] = i
+		org_slicenames = dict((k, slicenames[k]) for k in organelles_selected)
+		combo_slicenames = dict((k, slicenames.get(k)) for k in combo_present)
+		cell_crop_mainorg = SM.makeSubstack(cell_crop, ','.join([str(i) for i in org_slicenames.values()]))
+		cell_crop_pairwise = SM.makeSubstack(cell_crop, ','.join([str(i) for i in combo_slicenames.values()]))
+		mainorg_max = ZProjector.run(cell_crop_mainorg, "max")
+		mainorg_max.setTitle("organelles")
+		pairwise_max = ZProjector.run(cell_crop_pairwise, "max")
+		pairwise_max.setTitle("pairwise_contact_sites")
+		PA.setSummaryTable(results)
+		IJ.run(mainorg_max, "Analyze Particles...", "size=0-Infinity summarize composite")
+		PA.setSummaryTable(results)
+		IJ.run(pairwise_max, "Analyze Particles...", "size=0-Infinity summarize composite")
+		results.save(datadir + "/analysis/" + c + "_" + cell_id + "_summary_results.csv")
 		
+				
 		#clear ROIs, results, leave stack and cell image open (close duplicates)
 		cells_copy.close()
 		cell_crop.close()
