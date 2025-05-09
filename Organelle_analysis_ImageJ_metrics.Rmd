@@ -1,0 +1,87 @@
+---
+title: "Organelle Analysis - ImageJ Metrics"
+author: "Fiona M. Love"
+date: "2025-05-09"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(patchwork)
+
+```
+
+#ANALYSIS
+
+Select ImageJ Macro output directory
+*R VERSION BUG ON WINDOWS 10* - WON'T OPEN SELECTION WINDOW UNTIL AFTER file.choose() HAS BEEN RUN
+https://stackoverflow.com/questions/77984544/choose-dir-function-does-not-work-in-r-v4-3-2
+```{r data_location}
+dir <- choose.dir() #WINDOWS ONLY - TODO Mac support with tk option - https://stackoverflow.com/questions/48218491/os-independent-way-to-select-directory-interactively-in-r
+```
+
+Identify conditions for matching and iterating over ROI/measurement files
+```{r conditions}
+files <- list.files(dir, pattern = ('\\.csv$|\\.zip$'), recursive = FALSE, include.dirs = FALSE)
+condcells <- unique(gsub('_results.csv||_POOLED_results.csv||_POOLED_ROIs.zip||_ROIs.zip', '', files))#updated for cell-by-cell processing
+```
+
+Identify files for each condition/cell
+```{r file_matching}
+
+setClass("Measurements", slots = c(data = "data.frame", cells = "data.frame", other = "data.frame"))
+setClass("ROIs", slots = c(data = "list", cells = "list", other = "list"))
+
+#measurements cleaning/categories
+process_measurements <- function(dir, condition, file_pattern){
+  df <- read.csv(paste0(dir, '\\', condition, file_pattern))
+  df$ROI_name <- unlist(regmatches(df$Label, regexec("(?<=:).+(?=:)?", df$Label, perl = T)))
+  #TODO - this might break if trailing : missing - dependent on single/multi channel image - should be consistent with macro
+  df.cells = df[df$Type == 'cells',]
+  df.other = df[df$Type != 'cells',]
+  
+  
+  mes <- new("Measurements", data = df, cells = df.cells, other = df.other)
+  return(mes)
+}
+
+pooled <- lapply(condcells, function(c){process_measurements(dir, c, "_POOLED_results.csv")})
+individual <- lapply(condcells, function(c){process_measurements(dir, c, "_results.csv")})
+
+process_ROIs <- function(condition, file_pattern){
+  
+}
+
+#currently reading in all data - consider moving into loop if too much in memory at once
+condcells.data <- lapply(condcells, function(condc){
+  print(condc)
+  c <- list()
+  
+
+    
+    
+  pooled_measurements <- read.csv(paste0(dir, '\\', condc, '_POOLED_results.csv'))
+  pooled_measurements$ROI_name <- unlist(regmatches(pooled_measurements$Label, regexec("(?<=:).+(?=:)?", pooled_measurements$Label, perl = T)))
+  #TODO - this might break if trailing : missing - dependent on single/multi channel image - should be consistent with macro
+  pooled_measurements.cells = measurements[measurements$Type == 'cells',]
+  pooled_measurements.other = measurements[measurements$Type != 'cells',]
+  
+  ROIs = read.ijzip(paste0(dir, '\\', condc, '_ROIs.zip'), names = TRUE)
+  ROIs.cells <- ROIs[measurements[measurements$Type == 'cells',]$ROI_name]
+  ROIs.other <- ROIs[measurements[measurements$Type != 'cells',]$ROI_name]
+  remove(ROIs)
+  remove(measurements)
+  
+  c[['measurements.cells']] <- measurements.cells
+  c[['measurements.other']] <- measurements.other
+  c[['ROIs.cells']] <- ROIs.cells
+  c[['ROIs.other']] <- ROIs.other
+  return(c)
+})
+names(condcells.data) = condcells
+```
