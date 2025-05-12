@@ -357,8 +357,13 @@ for c in conditions:
 		results.reset()
 		
 		
-		
+	
+	cells.close()
+	orgstack.close()
 	IJ.run("Close All", "")
-	rm.close()
-	IJ.selectWindow("Results")
-	IJ.run("Close")
+	rm.reset()
+	results.reset()
+	
+rm.close()
+IJ.selectWindow("Results")
+IJ.run("Close")
