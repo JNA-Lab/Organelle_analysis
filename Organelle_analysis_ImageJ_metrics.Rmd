@@ -28,7 +28,7 @@ dir <- choose.dir() #WINDOWS ONLY - TODO Mac support with tk option - https://st
 *Identify conditions for matching and iterating over ROI/measurement files*
 ```{r conditions}
 files <- list.files(dir, pattern = ('\\.csv$|\\.zip$'), recursive = FALSE, include.dirs = FALSE)
-condcells <- unique(gsub('_results.csv||_POOLED_results.csv||_POOLED_ROIs.zip||_ROIs.zip', '', files))#updated for cell-by-cell processing
+condcells <- unique(gsub('_results.csv||_POOLED_results.csv||_POOLED_ROIs.zip||_ROIs.zip||_summary_results.csv', '', files))#updated for cell-by-cell processing
 ```
 
 *Identify files for each condition/cell*
@@ -122,3 +122,14 @@ if('nuclei_area' %in% colnames(metrics)){
 
 ```
 
+
+
+## Extra Metrics ##
+Passing through additional measurements from ImageJ, with details from file names
+```{r}
+pooled.df <- do.call(rbind, lapply(1:length(pooled_measurements), function(p){ df <- pooled_measurements[[p]]@data; df$filename <- names(pooled_measurements)[p]; return(df) }))
+extra_measurements.pooled <- left_join(metrics[, c('infection_time', 'infected', 'bac_line', 'cell_line', 'image', 'cell_number', 'condcell')], pooled.df, join_by(condcell == filename))
+
+individual.df <- do.call(rbind, lapply(1:length(individual_measurements), function(i){ df <- individual_measurements[[i]]@data; df$filename <- names(individual_measurements)[i]; return(df) }))
+extra_measurements.individual <- left_join(metrics[, c('infection_time', 'infected', 'bac_line', 'cell_line', 'image', 'cell_number', 'condcell')], individual.df, join_by(condcell == filename))
+```
