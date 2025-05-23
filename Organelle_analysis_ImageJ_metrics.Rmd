@@ -13,6 +13,9 @@ library(dplyr)
 library(ggplot2)
 library(ggpubr)
 library(patchwork)
+library(corrr)
+library(ggcorrplot)
+library(factoextra)
 
 ```
 
@@ -52,6 +55,8 @@ pooled_measurements <- lapply(condcells, function(c){process_measurements(dir, c
 names(pooled_measurements) <- condcells
 individual_measurements <- lapply(condcells, function(c){process_measurements(dir, c, "_results.csv")})
 names(individual_measurements) <- condcells
+summary_measurements <- lapply(condcells, function(c){process_measurements(dir, c, "_summary_results.csv")})
+names(summary_measurements) <- condcells
 
 ```
 
@@ -88,12 +93,12 @@ metrics <- data.frame(condcell = condcells)
 
 #---CUSTOM MATCHING - Tom's data---
 #TODO - more efficient
-metrics$infection_time <- lapply(condcells, function(c){strsplit(c, "_")[[1]][2]})
-metrics$infected <- lapply(condcells, function(c){strsplit(c, "_")[[1]][3]})
-metrics$bac_line <- lapply(condcells, function(c){strsplit(c, "_")[[1]][4]})
-metrics$cell_line <- lapply(condcells, function(c){strsplit(c, "_")[[1]][5]})
-metrics$image <- lapply(condcells, function(c){strsplit(c, "_")[[1]][6]})
-metrics$cell_number <- lapply(condcells, function(c){strsplit(c, "_")[[1]][8]})
+metrics$infection_time <- sapply(condcells, function(c){strsplit(c, "_")[[1]][2]})
+metrics$infected <- sapply(condcells, function(c){strsplit(c, "_")[[1]][3]})
+metrics$bac_line <- sapply(condcells, function(c){strsplit(c, "_")[[1]][4]})
+metrics$cell_line <- sapply(condcells, function(c){strsplit(c, "_")[[1]][5]})
+metrics$image <- sapply(condcells, function(c){strsplit(c, "_")[[1]][6]})
+metrics$cell_number <- sapply(condcells, function(c){strsplit(c, "_")[[1]][8]})
 #------------
 
 metrics$cell_area <- sapply(condcells, function(c){ pooled_measurements[[c]]@cells$Area })
@@ -113,6 +118,11 @@ for(org in c(organelles, names(pairwise))){
   }
 }
 
+metrics$total_organelle_area <- sapply(condcells, function(c){df <- summary_measurements[[c]]@data; df[df$Slice == 'organelles','Total.Area'][1]})
+metrics$total_organelle_area_norm_cell <- metrics$total_organelle_area/metrics$cell_area
+metrics$total_contact_area <- sapply(condcells, function(c){df <- summary_measurements[[c]]@data; df[df$Slice == 'pairwise_contact_sites','Total.Area'][1]})
+metrics$total_contact_area_norm_cell <- metrics$total_contact_area/metrics$cell_area
+
 if('nuclei_area' %in% colnames(metrics)){
   metrics$cytoplasmic_area <- metrics$cell_area - metrics$nuclei_area
 }
@@ -120,6 +130,24 @@ if('nuclei_area' %in% colnames(metrics)){
 
 
 
+```
+
+
+
+## Data cleaning ##
+```{r}
+metrics[is.na(metrics)] <- 0
+#Tom specific:
+metrics[which(metrics$infected == 'UNinfected'),] <- metrics[which(metrics$infected == 'UNinfected'),] %>% mutate(across(contains('bacteria'), ~replace(.,1:length(.),0)))
+metrics[which(metrics$infected == '1dpi'),]$infected <- 'infected'
+```
+
+
+
+## First attempt at PCA analysis on metric set - should narrow down (e.g. raw vs normalised values) ##
+```{r}
+testpca <- prcomp(metrics[,8:ncol(metrics)])
+fviz_pca_ind(testpca, col.ind = as.factor(metrics$infected), addEllipses = T, ellipse.type = 'confidence')
 ```
 
 
@@ -133,3 +161,6 @@ extra_measurements.pooled <- left_join(metrics[, c('infection_time', 'infected',
 individual.df <- do.call(rbind, lapply(1:length(individual_measurements), function(i){ df <- individual_measurements[[i]]@data; df$filename <- names(individual_measurements)[i]; return(df) }))
 extra_measurements.individual <- left_join(metrics[, c('infection_time', 'infected', 'bac_line', 'cell_line', 'image', 'cell_number', 'condcell')], individual.df, join_by(condcell == filename))
 ```
+
+
+
