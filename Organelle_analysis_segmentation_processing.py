@@ -2,7 +2,7 @@ from ij import IJ
 from ij.gui import GenericDialog, NonBlockingGenericDialog, Roi
 from ij.io import DirectoryChooser
 from ij.measure import ResultsTable
-from ij.plugin import ImageCalculator, StackEditor, ImagesToStack, SubstackMaker, ZProjector
+from ij.plugin import ImageCalculator, StackEditor, ImagesToStack, SubstackMaker, ZProjector, HyperStackConverter
 from ij.plugin.frame import RoiManager
 from ij.plugin.filter import ParticleAnalyzer
 from java.awt import Color
@@ -145,7 +145,9 @@ SM = SubstackMaker()
 PA = ParticleAnalyzer()
 
 ##MAIN LOOP
+progress = 0
 for c in conditions:
+	progress += 1
 	#open and rename images
 	c_filenames = [f for f in filenames if c in f]#find filenames matching condition
 	c_cell_image = str()
@@ -263,7 +265,9 @@ for c in conditions:
 				
 		#save cropped stack
 		cell_crop.show()#for pooled ROI measurements
-		IJ.saveAs(cell_crop, "Tiff", datadir + "/analysis/" + c + "_" + cell_id + "_stack.tif")
+		cell_crop_copy = cell_crop.duplicate()
+		HyperStackConverter.toHyperStack(cell_crop_copy, len(images_to_stack), 1, 1)
+		IJ.saveAs(cell_crop_copy, "Tiff", datadir + "/analysis/" + c + "_" + cell_id + "_stack.tif")
 		
 		#save ROIs
 		rm.runCommand("Select All")
@@ -356,13 +360,15 @@ for c in conditions:
 		rm.reset()
 		results.reset()
 		
-		
+	IJ.showProgress(progress/len(conditions))
+	print("Progress - " + str(progress) + " of " + str(len(conditions)) + " conditions done")		
 	
 	cells.close()
 	orgstack.close()
 	IJ.run("Close All", "")
 	rm.reset()
 	results.reset()
+	
 	
 rm.close()
 IJ.selectWindow("Results")
