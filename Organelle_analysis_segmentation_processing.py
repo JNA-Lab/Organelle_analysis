@@ -9,7 +9,6 @@ from java.awt import Color
 import os
 import re
 
-
 #get folder and file information
 dc = DirectoryChooser("Select the folder with your segmented images")
 datadir = dc.getDirectory()
@@ -335,6 +334,7 @@ for c in conditions:
 		slicenames = dict()
 		for i in range(1, nSlices + 1, 1):
 			slicenames[cell_crop.getImageStack().getSliceLabel(i)] = i
+		print(slicenames)
 		org_slicenames = dict((k, slicenames[k]) for k in organelles_selected)
 		combo_slicenames = dict((k, slicenames.get(k)) for k in combo_present)
 		cell_crop_mainorg = SM.makeSubstack(cell_crop, ','.join([str(i) for i in org_slicenames.values()]))
@@ -348,8 +348,7 @@ for c in conditions:
 		PA.setSummaryTable(results)
 		IJ.run(pairwise_max, "Analyze Particles...", "size=0-Infinity summarize composite")
 		results.save(datadir + "/analysis/" + c + "_" + cell_id + "_summary_results.csv")
-		
-				
+		
 		#clear ROIs, results, leave stack and cell image open (close duplicates)
 		cells_copy.close()
 		cell_crop.close()
@@ -359,6 +358,12 @@ for c in conditions:
 		
 		rm.reset()
 		results.reset()
+		
+		#save stack labels for interpreting tiff stacks in R
+		with open(datadir + "analysis\\" + c + "_" + cell_id + "_slice_labels.csv", "w") as f:#different path format then ImageJ
+			for i in range(1, len(slicenames) + 1, 1):
+				f.write(str(i) + "," + slicenames.keys()[list(slicenames.values()).index(i)] + "\n")
+		#TODO - move combo_present and this outside of loop - should be the same for all cells and conditions in a batch
 		
 	IJ.showProgress(progress/len(conditions))
 	print("Progress - " + str(progress) + " of " + str(len(conditions)) + " conditions done")		
