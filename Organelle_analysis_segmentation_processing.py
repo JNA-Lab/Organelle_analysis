@@ -228,6 +228,8 @@ for c in conditions:
 		rm.rename(0, cell_id)
 		rm.select(cell_crop, 0)
 		IJ.run(cell_crop, "Clear Outside", "stack")
+		cell_crop_mask = cell_crop.createRoiMask()
+		cell_crop.getImageStack().addSlice("cell", cell_crop_mask)
 		
 		#analyse particles per organelle/pair
 		SE.convertStackToImages(cell_crop)
@@ -265,7 +267,7 @@ for c in conditions:
 		#save cropped stack
 		cell_crop.show()#for pooled ROI measurements
 		cell_crop_copy = cell_crop.duplicate()
-		HyperStackConverter.toHyperStack(cell_crop_copy, len(images_to_stack), 1, 1)
+		HyperStackConverter.toHyperStack(cell_crop_copy, len(images_to_stack) + 1, 1, 1)#+1 for added cell mask
 		IJ.saveAs(cell_crop_copy, "Tiff", datadir + "/analysis/" + c + "_" + cell_id + "_stack.tif")
 		
 		#save ROIs
