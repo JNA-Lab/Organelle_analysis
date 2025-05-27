@@ -4,3 +4,248 @@ author: "Fiona M. Love"
 date: "2025-05-23"
 output: html_document
 ---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(readbitmap)
+# library(RImageJROI)
+# library(spatstat.geom)
+# library(sf)
+library(dplyr)
+library(terra)
+library(tidyterra)
+library(ggplot2)
+library(ggpubr)
+library(patchwork)
+
+```
+
+
+*TEMPORARY - Run Organelle_analysis_ImageJ_metrics.Rmd first - will need access to certain variables
+```{r}
+#SEE ABOVE - manual step
+```
+
+
+Reading in TIF stacks for each cell and creating pixel tables
+```{r}
+slicenames <- read.csv(paste0(dir, '\\', condcells[1], '_slice_labels.csv'), header = FALSE)[,2]#running ONCE - should be consistent across batch
+
+cells.rasters <- lapply(condcells, function(c){ 
+  r <- rast(paste0(dir, '\\', c, '_stack.tif'))
+  names(r) <- slicenames
+  r <- extend(r, c(1,1))
+  crs(r) <- 'local'
+  return(r)
+})
+names(cells.rasters) <- condcells
+
+cells.pixels <- lapply(cells.rasters, function(cr){
+  as.data.frame(cr, xy = TRUE)
+})
+names(cells.pixels) <- condcells
+```
+
+MDR analysis - not looped yet
+```{r}
+#-----extract centroid - nuclei or cell-based------
+#nucleus centroid
+if('nuclei' %in% slicenames){
+  cells.nuc_cent <- do.call(rbind, lapply(condcells, function(c){ 
+    p <- pooled_measurements[[c]]@data
+    cent <- p[p$Type == 'nuclei', c('X', 'Y')]#should only have one row in pooled measurements - combined centroid if multiples
+    cent$condcell <- c
+    return(cent)
+  }))
+} else {#cell centroid
+  cells.cell_cent <- do.call(rbind, lapply(condcells, function(c){
+    p <- pooled_measurements[[c]]@data
+    cent <- p[p$Type == 'cells', c('X', 'Y')]
+    cent$condcell <- c
+    return(cent)
+  }))  
+}
+#--------------------------
+
+#-----calculate MDR-----
+for(name in names(cells.pixels)){
+  cell <- cells.pixels[[name]]
+  #distance to nucleus/PM and standard MDR
+  cell$dist_to_cent <- sapply(1:nrow(cell), function(px){ 
+    px_x = cell[px, 'x']
+    px_y = cell[px, 'y']
+    cent = ifelse('nuclei' %in% slicenames, cells.nuc_cent[cells.nuc_cent$condcell == name,], cells.cell_cent[cells.cell_cent$condcell == name,])
+    return(abs(sqrt((px_x - cent$X[1])^2 + (px_y - cent$X[1])^2)))
+    #index for formatting - multiple golgi/nuclei handled above in centroid calculation
+    #TODO - angle
+  })
+  print(cell$dist_to_cent)
+  cell$dist_to_PM = as.data.frame(mask(distance(cells.rasters[[name]][['cell']], target = 0), cells.rasters[[name]][['cell']]))[,1]#distance to nearest PM pixel (outside cell)
+  print(cell$dist_to_PM)
+  cell$norm = cell$dist_to_cent/(cell$dist_to_cent + cell$dist_to_PM)
+  
+  cells.pixels[[name]] <- cell
+}
+
+
+
+```
+
+
+
+```{r}
+
+  #for Pixel distance Golgi-based MDR
+  
+  organelles.spatvectors = lapply(names(sf.other), function(o){ 
+    v = vect(sf.other[[o]]) 
+    crs(v) <- 'local'
+    return(v)
+  })
+  names(organelles.spatvectors) = names(sf.other)
+  for(org in names(organelles.spatvectors)){
+    organelles.spatvectors[[org]]$rast_val = 2
+  }#TODO - organelle type metadata?
+  
+  #TODO URGENT (for Tom) - iterate for every organelle type, then rbind for organelles.rasters below rather than regenerating
+  golgi.rasters = lapply(names(cells.pixels), function(cell){
+    cell.golgi = other_to_cells[other_to_cells$cell == cell & other_to_cells$type == 'golgi', "other"]
+    golgi.spatvector = vect(organelles.spatvectors[cell.golgi])
+    g = extend(rasterize(golgi.spatvector, rast(golgi.spatvector, res = 1, crs = 'local'), field = 'rast_val'), 1)#extend might not be necessary here - check
+    #ERROR HERE - TODO 8/4
+    #crs(g) <- 'local'
+    g = extend(g, cells.rasters[[cell]]) #changing extent of raster to fit corresponding cell for distance calculations
+    return(g)
+  })
+  names(golgi.rasters) = names(cells.pixels)
+  #also ensure cell raster extents encompass entire golgi assigned to that cell:
+  cells.rasters = lapply(names(cells.rasters), function(cell){
+    c = cells.rasters[[cell]]
+    if(cell %in% names(golgi.rasters)){#shouldn't be necessary...?
+      c = extend(c, golgi.rasters[[cell]])
+    }
+    return(c)
+  })
+  names(cells.rasters) = valid#names lost above
+  
+  
+  for(name in names(cells.pixels)){
+    cell = cells.pixels[[name]]
+    #distance to nucleus/PM and standard MDR
+    cell$dist_to_nuc = sapply(1:nrow(cell), function(px){ 
+      px_x = cell[px, 'x']
+      px_y = cell[px, 'y']
+      cent = cells.nuc_cent[cells.nuc_cent$cell == name,]
+      return(abs(sqrt((px_x - cent$Cent_X_pix[1])^2 + (px_y - cent$Cent_Y_pix[1])^2)))
+      # #index for formatting - multiple golgi/nuclei handled above in centroid calculation
+    })
+    cell$dist_to_PM = as.data.frame(mask(distance(cells.rasters[[name]], target = 1), cells.rasters[[name]]))[,1]#distance to nearest PM pixel (outside cell)
+    cell$norm = cell$dist_to_nuc/(cell$dist_to_nuc + cell$dist_to_PM)
+    
+    cell$angle = sapply(1:nrow(cell), function(px){ 
+      px_x = cell[px, 'x']
+      px_y = cell[px, 'y']
+      cent = cells.nuc_cent[cells.nuc_cent$cell == name,]
+      return((atan2((px_y - cent$Cent_Y_pix[1]), (px_x - cent$Cent_X_pix[1]))*180)/pi)#index for formatting - multiple golgi/nuclei handled above in centroid calculation
+      #TODO - combine with dist_to_nuc
+    })
+    
+    #Golgi-based MDR
+    cell$dist_to_golgi = sapply(1:nrow(cell), function(px){ 
+      px_x = cell[px, 'x']
+      px_y = cell[px, 'y']
+      cent = cells.golgi_cent[cells.golgi_cent$cell == name,]
+      return(abs(sqrt((px_x - cent$Cent_X_pix[1])^2 + (px_y - cent$Cent_Y_pix[1])^2)))#index for formatting - multiple golgi/nuclei handled above in centroid calculation
+    })
+    cell$norm_to_golgi = cell$dist_to_golgi/(cell$dist_to_golgi + cell$dist_to_PM)
+    
+    #Golgi-based MDR NEAREST PIXEL
+    cell$dist_to_nearest_golgi = as.data.frame(mask(distance(golgi.rasters[[name]], target = NA), cells.rasters[[name]]))[,1]#distance to nearest golgi pixel
+    cell$norm_to_nearest_golgi = cell$dist_to_nearest_golgi/(cell$dist_to_nearest_golgi + cell$dist_to_PM)
+
+    cells.pixels[[name]] = cell
+  }
+  
+
+  
+  organelles.rasters = lapply(names(sf.other), function(o){ 
+    r = extend(rasterize(organelles.spatvectors[[o]], rast(organelles.spatvectors[[o]],res=1), field = 'rast_val'), 1) 
+    crs(r) <- 'local'
+    return(r)
+  })
+  names(organelles.rasters) = names(sf.other)
+  organelles.pixels = lapply(names(sf.other), function(o){ as.data.frame(organelles.rasters[[o]], xy = TRUE) })
+  names(organelles.pixels) = names(sf.other)
+  
+  for(n in names(organelles.pixels)){
+    organelles.pixels[[n]]$name = n
+    organelles.pixels[[n]]$type = measurements.other[measurements.other$ROI_name == n,]$Type[1]
+  }
+  
+  for(name in names(cells.pixels)){
+    cell = cells.pixels[[name]]
+    cell$golgi = FALSE
+    cell$nucleus = FALSE
+    cell$bac = FALSE
+    cell$ng = FALSE
+    cell$gb = FALSE
+    cell$bn = FALSE
+    cell.org = organelles.pixels[which(names(organelles.pixels) %in% other_to_cells[other_to_cells$cell == name,]$other)]
+    for (o in cell.org){
+      for(i in 1:nrow(o)){
+        o.px = o[i,]
+        cell.px = which(cell$x == o.px$x & cell$y == o.px$y)
+        cell[cell.px, o.px$type[1]] = TRUE
+      }
+    }
+    cell$name = name
+    cell$infected = name %in% infected
+    cells.pixels[[name]] = cell
+  }
+  
+  
+  cells.pixels.pooled = do.call(rbind, cells.pixels)
+  
+  per_cell = do.call(rbind, lapply(names(cells.pixels), function(n){
+    cell.condition = condition
+    cell.px = cells.pixels.pooled[cells.pixels.pooled$name == n,]
+    cell.golgi_norm = mean(cell.px[cell.px$golgi == TRUE,]$norm)
+    cell.bac_norm = mean(cell.px[cell.px$bac == TRUE,]$norm)
+    cell.bac_norm_to_golgi = mean(cell.px[cell.px$bac == TRUE,]$norm_to_golgi)
+    cell.bac_dist_to_nearest_golgi = mean(cell.px[cell.px$bac == TRUE,]$dist_to_nearest_golgi)
+    cell.bac_norm_to_nearest_golgi = mean(cell.px[cell.px$bac == TRUE,]$norm_to_nearest_golgi)
+    cell.golgi_area = nrow(cell.px[cell.px$golgi == TRUE,])#TODO - check against ImageJ measurements
+    cell.gb_area = nrow(cell.px[cell.px$gb == TRUE,])
+    
+    cell.golgi_count = nrow(other_to_cells[other_to_cells$cell == n & other_to_cells$type == 'golgi',])
+    cell.nucleus_count = nrow(other_to_cells[other_to_cells$cell == n & other_to_cells$type == 'nucleus',])
+    
+    cell.name = cell.px$name[1]
+    cell.infected = cell.px$infected[1]
+    
+    cell.area = measurements.cells[measurements.cells$ROI_name == cell.name,]$Area[1]
+    cell.circ = measurements.cells[measurements.cells$ROI_name == cell.name,]$Circ[1]
+    
+    cell.df = data.frame(
+      cond = cell.condition,
+      name = cell.name,
+      infected = cell.infected,
+      golgi_norm = cell.golgi_norm,
+      bac_norm = cell.bac_norm,
+      bac_norm_to_golgi = cell.bac_norm_to_golgi,
+      bac_dist_to_nearest_golgi = cell.bac_dist_to_nearest_golgi,
+      bac_norm_to_nearest_golgi = cell.bac_norm_to_nearest_golgi,
+      golgi_area = cell.golgi_area,
+      gb_area = cell.gb_area,
+      cell_area = cell.area,
+      cell_circ = cell.circ,
+      golgi_count = cell.golgi_count,
+      nucleus_count = cell.nucleus_count
+    )
+  }))
+  return(per_cell)
+  remove(per_cell)
+
+```
+
