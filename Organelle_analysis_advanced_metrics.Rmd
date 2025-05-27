@@ -35,7 +35,7 @@ slicenames <- read.csv(paste0(dir, '\\', condcells[1], '_slice_labels.csv'), hea
 cells.rasters <- lapply(condcells, function(c){ 
   r <- rast(paste0(dir, '\\', c, '_stack.tif'))
   names(r) <- slicenames
-  r <- extend(r, c(1,1))
+  r <- extend(r, c(1,1), fill = 0)
   crs(r) <- 'local'
   return(r)
 })
@@ -73,21 +73,23 @@ for(name in names(cells.pixels)){
   cell <- cells.pixels[[name]]
   #distance to nucleus/PM and standard MDR
   cell$dist_to_cent <- sapply(1:nrow(cell), function(px){ 
-    px_x = cell[px, 'x']
-    px_y = cell[px, 'y']
-    cent = ifelse('nuclei' %in% slicenames, cells.nuc_cent[cells.nuc_cent$condcell == name,], cells.cell_cent[cells.cell_cent$condcell == name,])
-    return(abs(sqrt((px_x - cent$X[1])^2 + (px_y - cent$X[1])^2)))
+    px_x = cell$x[px]
+    px_y = cell$y[px]
+    if('nuclei' %in% slicenames){ 
+      cent <- cells.nuc_cent[cells.nuc_cent$condcell == name,]
+    } else {
+      cent <- cells.cell_cent[cells.cell_cent$condcell == name,]
+    }
+    return(abs(sqrt((px_x - cent$X[1])^2 + (px_y - cent$Y[1])^2)))
     #index for formatting - multiple golgi/nuclei handled above in centroid calculation
     #TODO - angle
   })
-  print(cell$dist_to_cent)
   cell$dist_to_PM = as.data.frame(mask(distance(cells.rasters[[name]][['cell']], target = 0), cells.rasters[[name]][['cell']]))[,1]#distance to nearest PM pixel (outside cell)
-  print(cell$dist_to_PM)
   cell$norm = cell$dist_to_cent/(cell$dist_to_cent + cell$dist_to_PM)
   
   cells.pixels[[name]] <- cell
 }
-
+#TODO - limit to pixels within cell boundary
 
 
 ```
