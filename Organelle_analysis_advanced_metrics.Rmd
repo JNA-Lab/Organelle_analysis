@@ -68,11 +68,16 @@ if('nuclei' %in% slicenames){
 }
 #--------------------------
 
+#efficiency - filter down to pixels inside cell boundary
+for(name in names(cells.pixels)){
+  cells.pixels[[name]] <- cells.pixels[[name]] %>% filter(cell > 0)
+}
+
 #-----calculate MDR-----
 for(name in names(cells.pixels)){
   cell <- cells.pixels[[name]]
   #distance to nucleus/PM and standard MDR
-  cell$dist_to_cent <- sapply(1:nrow(cell), function(px){ 
+  dist_angle_to_cent <- do.call(rbind, lapply(1:nrow(cell), function(px){ 
     px_x = cell$x[px]
     px_y = cell$y[px]
     if('nuclei' %in% slicenames){ 
@@ -80,16 +85,20 @@ for(name in names(cells.pixels)){
     } else {
       cent <- cells.cell_cent[cells.cell_cent$condcell == name,]
     }
-    return(abs(sqrt((px_x - cent$X[1])^2 + (px_y - cent$Y[1])^2)))
-    #index for formatting - multiple golgi/nuclei handled above in centroid calculation
-    #TODO - angle
-  })
-  cell$dist_to_PM = as.data.frame(mask(distance(cells.rasters[[name]][['cell']], target = 0), cells.rasters[[name]][['cell']]))[,1]#distance to nearest PM pixel (outside cell)
+    df <- data.frame(
+                      dist = abs(sqrt((px_x - cent$X[1])^2 + (px_y - cent$Y[1])^2)),
+                      angle = (atan2((px_y - cent$Y[1]), (px_x - cent$X[1]))*180)/pi
+    )
+    return(df)
+  }))
+  cell$dist_to_cent <- dist_angle_to_cent$dist
+  cell$angle_to_cent <- dist_angle_to_cent$angle
+  cr <- subst(cells.rasters[[name]][['cell']], 255, NA)
+  cell$dist_to_PM = as.data.frame(mask(distance(cr, exclude = 255), cells.rasters[[name]][['cell']], maskvalues = 0))[,1]#distance to nearest PM pixel (outside cell)
   cell$norm = cell$dist_to_cent/(cell$dist_to_cent + cell$dist_to_PM)
   
   cells.pixels[[name]] <- cell
 }
-#TODO - limit to pixels within cell boundary
 
 
 ```
