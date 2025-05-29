@@ -152,7 +152,7 @@ for c in conditions:
 	c_cell_image = str()
 	for cf in c_filenames:
 		IJ.open(os.path.join(datadir, cf))
-		imp = IJ.getImage()		
+		imp = IJ.getImage()	
 		try:
 			organelle = [k for k,v in org_regex.items() if v in cf][0]
 			imp.setTitle(organelle)
@@ -335,7 +335,7 @@ for c in conditions:
 		_, _, _, nSlices, _ = cell_crop.getDimensions()
 		slicenames = dict()
 		for i in range(1, nSlices + 1, 1):
-			slicenames[cell_crop.getImageStack().getSliceLabel(i)] = i
+			slicenames[cell_crop.getImageStack().getShortSliceLabel(i)] = i
 		print(slicenames)
 		org_slicenames = dict((k, slicenames[k]) for k in organelles_selected)
 		combo_slicenames = dict((k, slicenames.get(k)) for k in combo_present)
