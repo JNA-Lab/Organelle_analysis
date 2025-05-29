@@ -18,6 +18,7 @@ library(tidyterra)
 library(ggplot2)
 library(ggpubr)
 library(patchwork)
+library(Rcpp)
 
 ```
 
@@ -47,10 +48,11 @@ cells.pixels <- lapply(cells.rasters, function(cr){
 names(cells.pixels) <- condcells
 ```
 
-MDR analysis - not looped yet
+MDR analysis
 ```{r}
 #-----extract centroid - nuclei or cell-based------
 #nucleus centroid
+cent_type = ''
 if('nuclei' %in% slicenames){
   cells.nuc_cent <- do.call(rbind, lapply(condcells, function(c){ 
     p <- pooled_measurements[[c]]@data
@@ -58,6 +60,7 @@ if('nuclei' %in% slicenames){
     cent$condcell <- c
     return(cent)
   }))
+  cent_type == 'nuclei'
 } else {#cell centroid
   cells.cell_cent <- do.call(rbind, lapply(condcells, function(c){
     p <- pooled_measurements[[c]]@data
@@ -65,6 +68,7 @@ if('nuclei' %in% slicenames){
     cent$condcell <- c
     return(cent)
   }))  
+  cent_type == 'cell'
 }
 #--------------------------
 
@@ -74,31 +78,28 @@ for(name in names(cells.pixels)){
 }
 
 #-----calculate MDR-----
+print(Sys.time())
+
 for(name in names(cells.pixels)){
   cell <- cells.pixels[[name]]
   #distance to nucleus/PM and standard MDR
-  dist_angle_to_cent <- do.call(rbind, lapply(1:nrow(cell), function(px){ 
-    px_x = cell$x[px]
-    px_y = cell$y[px]
-    if('nuclei' %in% slicenames){ 
-      cent <- cells.nuc_cent[cells.nuc_cent$condcell == name,]
-    } else {
-      cent <- cells.cell_cent[cells.cell_cent$condcell == name,]
-    }
-    df <- data.frame(
-                      dist = abs(sqrt((px_x - cent$X[1])^2 + (px_y - cent$Y[1])^2)),
-                      angle = (atan2((px_y - cent$Y[1]), (px_x - cent$X[1]))*180)/pi
-    )
-    return(df)
-  }))
-  cell$dist_to_cent <- dist_angle_to_cent$dist
-  cell$angle_to_cent <- dist_angle_to_cent$angle
+  if(cent_type == 'nuclei'){ 
+    cent <- cells.nuc_cent[cells.nuc_cent$condcell == name,][1,]
+  } else {
+    cent <- cells.cell_cent[cells.cell_cent$condcell == name,][1,]
+  }
+  
+  cell$dist_to_cent <- abs(sqrt((cell$x - cent$X)^2 + (cell$y - cent$Y)^2))
+  cell_angle_to_cent <- (atan2((cell$y - cent$Y), (cell$x - cent$X))*180)/pi
+  
   cr <- subst(cells.rasters[[name]][['cell']], 255, NA)
   cell$dist_to_PM = as.data.frame(mask(distance(cr, exclude = 255), cells.rasters[[name]][['cell']], maskvalues = 0))[,1]#distance to nearest PM pixel (outside cell)
   cell$norm = cell$dist_to_cent/(cell$dist_to_cent + cell$dist_to_PM)
   
   cells.pixels[[name]] <- cell
 }
+
+print(Sys.time())
 
 ```
 
