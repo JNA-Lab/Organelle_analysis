@@ -232,7 +232,12 @@ for c in conditions:
 		cell_crop.getImageStack().addSlice("cell", cell_crop_mask)
 		
 		#analyse particles per organelle/pair
-		SE.convertStackToImages(cell_crop)
+		SE.convertStackToImages(cell_crop) #split cropped image stack into individual channels for analysis
+		#select and close cell slice image - ROI already added
+		IJ.selectWindow('cell')
+		cell_img = IJ.getImage()
+		cell_img.close()
+		#iterate over organelles and contact types
 		for org in organelles_selected:
 			Roi.setDefaultGroup(ROI_groups[org])
 			IJ.selectWindow(org)
