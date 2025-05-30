@@ -37,7 +37,7 @@ cells.rasters <- lapply(condcells, function(c){
   r <- rast(paste0(dir, '\\', c, '_stack.tif'))
   names(r) <- slicenames
   r <- extend(r, c(1,1), fill = 0)
-  crs(r) <- 'local'
+  crs(r) <- 'local' #IMPORTANT - treat as planar coordinates instead of lon/lat
   return(r)
 })
 names(cells.rasters) <- condcells
@@ -47,6 +47,10 @@ cells.pixels <- lapply(cells.rasters, function(cr){
 })
 names(cells.pixels) <- condcells
 ```
+
+
+
+
 
 MDR analysis
 ```{r}
@@ -60,7 +64,8 @@ if('nuclei' %in% slicenames){
     cent$condcell <- c
     return(cent)
   }))
-  cent_type == 'nuclei'
+  cent_type <- 'nuclei'
+  cells.cent <- cells.nuc_cent
 } else {#cell centroid
   cells.cell_cent <- do.call(rbind, lapply(condcells, function(c){
     p <- pooled_measurements[[c]]@data
@@ -68,26 +73,42 @@ if('nuclei' %in% slicenames){
     cent$condcell <- c
     return(cent)
   }))  
-  cent_type == 'cell'
+  cent_type <- 'cell'
+  cells.cent  <- cells.cell_cent
 }
 #--------------------------
+```
 
+```{r}
+#rounding centroids to nearest pixel coordinates
+px_round <- function(x,y){
+  xr <- round(x, digits = 0)
+  yr <- round(y, digits = 0)
+  if((x-xr)<0){ xr <- xr - 0.5 }
+  else if((x-xr)>=0){ xr <- xr + 0.5 }
+  if((y-yr)<0){ yr <- yr - 0.5 }
+  else if((y-yr)>=0){ yr <- yr + 0.5 }
+  return(c(xr, yr))
+}
+cells.cent.pixels <- do.call(rbind, lapply(1:nrow(cells.cent), function(i){
+  row <- cells.cent[i,]
+  px <- px_round(row$X, row$Y)
+  df <- data.frame(x = px[1], y = px[2])
+}))
+
+```
+
+```{r}
 #efficiency - filter down to pixels inside cell boundary
 for(name in names(cells.pixels)){
   cells.pixels[[name]] <- cells.pixels[[name]] %>% filter(cell > 0)
 }
 
 #-----calculate MDR-----
-print(Sys.time())
-
 for(name in names(cells.pixels)){
   cell <- cells.pixels[[name]]
   #distance to nucleus/PM and standard MDR
-  if(cent_type == 'nuclei'){ 
-    cent <- cells.nuc_cent[cells.nuc_cent$condcell == name,][1,]
-  } else {
-    cent <- cells.cell_cent[cells.cell_cent$condcell == name,][1,]
-  }
+  cent <- cells.cent[cells.cent$condcell == name,][1,]
   
   cell$dist_to_cent <- abs(sqrt((cell$x - cent$X)^2 + (cell$y - cent$Y)^2))
   cell_angle_to_cent <- (atan2((cell$y - cent$Y), (cell$x - cent$X))*180)/pi
@@ -96,12 +117,17 @@ for(name in names(cells.pixels)){
   cell$dist_to_PM = as.data.frame(mask(distance(cr, exclude = 255), cells.rasters[[name]][['cell']], maskvalues = 0))[,1]#distance to nearest PM pixel (outside cell)
   cell$norm = cell$dist_to_cent/(cell$dist_to_cent + cell$dist_to_PM)
   
+  #TODO - calculate and compare to above values
+  # cell$grid_to_cent
+  # cell$grid_to_PM
+  # cell$grid_norm
+  
   cells.pixels[[name]] <- cell
 }
 
-print(Sys.time())
 
 ```
 
 #TODO - pooled metrics
+integrated asymmetry, mean MDR per organelle/contact type, higher order contact sites(move?)
 
