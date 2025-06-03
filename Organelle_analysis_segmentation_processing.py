@@ -1,10 +1,11 @@
-from ij import IJ
+from ij import ImagePlus, IJ
 from ij.gui import GenericDialog, NonBlockingGenericDialog, Roi
 from ij.io import DirectoryChooser
 from ij.measure import ResultsTable
 from ij.plugin import ImageCalculator, StackEditor, ImagesToStack, SubstackMaker, ZProjector, HyperStackConverter
 from ij.plugin.frame import RoiManager
 from ij.plugin.filter import ParticleAnalyzer
+from ij.process import ImageProcessor
 from java.awt import Color
 import os
 import re
@@ -150,23 +151,25 @@ for c in conditions:
 	#open and rename images
 	c_filenames = [f for f in filenames if c in f]#find filenames matching condition
 	c_cell_image = str()
+	imp_key = {}
 	for cf in c_filenames:
-		IJ.open(os.path.join(datadir, cf))
-		imp = IJ.getImage()	
+		#IJ.open(os.path.join(datadir, cf))
+		imp = IJ.openImage(os.path.join(datadir, cf))#IJ.getImage()
 		try:
 			organelle = [k for k,v in org_regex.items() if v in cf][0]
 			imp.setTitle(organelle)
+			imp_key[organelle] = imp
 		except:#index out of range - no match in organelles
 			if cell_regex in cf:
 				c_cell_image = cf
 			imp.close()#close for now		
-		
+	print(imp_key)
 	
 	images_to_stack = []
 	#ORGANELLE THRESHOLDING
 	for org in organelles_selected:
-		IJ.selectWindow(org)
-		org_img = IJ.getImage()
+		#IJ.selectWindow(org)
+		org_img = imp_key[org]#IJ.getImage()
 		IJ.setRawThreshold(org_img, 1, (2**org_img.getBitDepth())-1)#will work for 8 or 16-bit; might break on 32-bit or RGB
 		IJ.run(org_img, "Convert to Mask", "")
 		images_to_stack.append(org_img)
@@ -174,10 +177,10 @@ for c in conditions:
 	#PAIRWISE OVERLAPS
 	for combo in pairwise_groups.keys():
 		if set(pairwise_groups[combo]).issubset(organelles_selected):
-			IJ.selectWindow(pairwise_groups[combo][0])
-			img1 = IJ.getImage()
-			IJ.selectWindow(pairwise_groups[combo][1])
-			img2 = IJ.getImage()
+			#IJ.selectWindow(pairwise_groups[combo][0])
+			img1 = imp_key[pairwise_groups[combo][0]]#IJ.getImage()
+			#IJ.selectWindow(pairwise_groups[combo][1])
+			img2 = imp_key[pairwise_groups[combo][1]]#IJ.getImage()
 			img3 = ImageCalculator.run(img1, img2, "AND create")
 			img3.setTitle(combo)
 			images_to_stack.append(img3)
@@ -186,11 +189,11 @@ for c in conditions:
 #	NonBlockingGenericDialog("BREAK").showDialog()#debugging
 	orgstack = I2S.run(images_to_stack)
 	orgstack.setTitle("Organelles")
-	orgstack.show()
+	#orgstack.show()
 		
 	#LOAD CELL IMAGE
-	IJ.open(os.path.join(datadir, c_cell_image))
-	cells = IJ.getImage()
+	#IJ.open(os.path.join(datadir, c_cell_image))
+	cells = IJ.openImage(os.path.join(datadir, c_cell_image))#IJ.getImage()
 	cells.setTitle("Cells")
 	
 	#Check max value
@@ -201,8 +204,8 @@ for c in conditions:
 		#duplicate cell image
 		cells_copy = cells.duplicate()
 		cells_copy.setTitle("cells_DUPLICATE")
-		cells_copy.show()
-		cells.hide()
+		#cells_copy.show()
+		#cells.hide()
 		#step threshold
 		IJ.setRawThreshold(cells_copy, i, i)
 		#analyse particles
@@ -220,7 +223,8 @@ for c in conditions:
 		rm.select(0)
 		cell_id = "cell_" + str(i)
 		cell_crop = orgstack.crop([rm.getRoi(0)], "stack")[0]
-		cell_crop.show()
+		cell_crop.setTitle(cell_id)
+		#cell_crop.show()
 		orgstack.hide()
 		rm.addRoi(cell_crop.getRoi())#cell boundary in cropped image
 		rm.select(0)
@@ -232,16 +236,25 @@ for c in conditions:
 		cell_crop.getImageStack().addSlice("cell", cell_crop_mask)
 		
 		#analyse particles per organelle/pair
-		SE.convertStackToImages(cell_crop) #split cropped image stack into individual channels for analysis
+		#SE.convertStackToImages(cell_crop) #split cropped image stack into individual channels for analysis
+		#manual implementation for background running:
+		cell_crop_slices = cell_crop.getStackSize()
+		cell_crop_stack = cell_crop.getImageStack()
+		crop_key = {}
+		for i in range(1, cell_crop_slices + 1, 1):
+			label = cell_crop_stack.getShortSliceLabel(i)
+			ip = cell_crop_stack.getProcessor(i)
+			i = ImagePlus(label, ip)
+			crop_key[label] = i
 		#select and close cell slice image - ROI already added
-		IJ.selectWindow('cell')
-		cell_img = IJ.getImage()
+		#IJ.selectWindow('cell')
+		cell_img = crop_key['cell']#IJ.getImage()
 		cell_img.close()
 		#iterate over organelles and contact types
 		for org in organelles_selected:
 			Roi.setDefaultGroup(ROI_groups[org])
-			IJ.selectWindow(org)
-			org_img = IJ.getImage()
+			#IJ.selectWindow(org)
+			org_img = crop_key[org]#IJ.getImage()
 			IJ.run(org_img, "Analyze Particles...", "size=0-Infinity add composite")
 			#rename by slice/organelle/cell
 			rm.deselect()
@@ -257,8 +270,8 @@ for c in conditions:
 			if set(pairwise_groups[combo]).issubset(organelles_selected):
 				combo_present.append(combo)
 				Roi.setDefaultGroup(pairwise_ROI_groups[combo])
-				IJ.selectWindow(combo)
-				combo_img = IJ.getImage()
+				#IJ.selectWindow(combo)
+				combo_img = crop_key[combo]#IJ.getImage()
 				IJ.run(combo_img, "Analyze Particles...", "size=0-Infinity add composite")
 				rm.deselect()
 				rm.selectGroup(pairwise_ROI_groups[combo])
@@ -270,7 +283,7 @@ for c in conditions:
 				combo_img.close()#TODO - move below?	
 				
 		#save cropped stack
-		cell_crop.show()#for pooled ROI measurements
+		#cell_crop.show()#for pooled ROI measurements
 		cell_crop_copy = cell_crop.duplicate()
 		HyperStackConverter.toHyperStack(cell_crop_copy, len(images_to_stack) + 1, 1, 1)#+1 for added cell mask
 		IJ.saveAs(cell_crop_copy, "Tiff", datadir + "/analysis/" + c + "_" + cell_id + "_stack.tif")
@@ -360,8 +373,8 @@ for c in conditions:
 		cells_copy.close()
 		cell_crop.close()
 		
-		cells.show()
-		orgstack.show()
+		#cells.show()
+		#orgstack.show()
 		
 		rm.reset()
 		results.reset()
