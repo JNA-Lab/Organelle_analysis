@@ -137,8 +137,9 @@ for f in filenames_filtered:#TODO - filter to selected extension
 
 
 #set up ROI manager
-RM = RoiManager()
+RM = RoiManager(False)#don't display
 rm = RM.getRoiManager()
+rm.hide()
 SE = StackEditor()
 I2S = ImagesToStack()
 SM = SubstackMaker()
@@ -224,16 +225,18 @@ for c in conditions:
 		cell_id = "cell_" + str(i)
 		cell_crop = orgstack.crop([rm.getRoi(0)], "stack")[0]
 		cell_crop.setTitle(cell_id)
-		#cell_crop.show()
 		orgstack.hide()
+		print('ROI - adding cell boundary')
+		cell_crop.show()
 		rm.addRoi(cell_crop.getRoi())#cell boundary in cropped image
+		cell_crop.hide()
 		rm.select(0)
 		rm.runCommand("Delete")#deleting original cell boundary - now in wrong place in cropped image
 		rm.rename(0, cell_id)
 		rm.select(cell_crop, 0)
 		IJ.run(cell_crop, "Clear Outside", "stack")
 		cell_crop_mask = cell_crop.createRoiMask()
-		cell_crop.getImageStack().addSlice("cell", cell_crop_mask)
+		cell_crop.getImageStack().addSlice('cell', cell_crop_mask)
 		
 		#analyse particles per organelle/pair
 		#SE.convertStackToImages(cell_crop) #split cropped image stack into individual channels for analysis
@@ -252,13 +255,16 @@ for c in conditions:
 		cell_img.close()
 		#iterate over organelles and contact types
 		for org in organelles_selected:
+			print('ROI - setting organelle group ' + org)
 			Roi.setDefaultGroup(ROI_groups[org])
 			#IJ.selectWindow(org)
 			org_img = crop_key[org]#IJ.getImage()
+			print('Analysing ' + org)
 			IJ.run(org_img, "Analyze Particles...", "size=0-Infinity add composite")
 			#rename by slice/organelle/cell
 			rm.deselect()
 			rm.selectGroup(ROI_groups[org])
+			print('ROI - getting ' + org + ' indices')
 			roi_start = rm.getSelectedIndex()
 			roi_count = rm.selected()
 			if roi_count > 0:
@@ -269,12 +275,14 @@ for c in conditions:
 		for combo in pairwise_groups.keys():
 			if set(pairwise_groups[combo]).issubset(organelles_selected):
 				combo_present.append(combo)
+				print('ROI - setting pairwise group ' + combo)
 				Roi.setDefaultGroup(pairwise_ROI_groups[combo])
 				#IJ.selectWindow(combo)
 				combo_img = crop_key[combo]#IJ.getImage()
 				IJ.run(combo_img, "Analyze Particles...", "size=0-Infinity add composite")
 				rm.deselect()
 				rm.selectGroup(pairwise_ROI_groups[combo])
+				print('ROI - getting ' + combo + ' indices')
 				combo_roi_start = rm.getSelectedIndex()
 				combo_roi_count = rm.selected()
 				if combo_roi_count > 0:
@@ -289,13 +297,23 @@ for c in conditions:
 		IJ.saveAs(cell_crop_copy, "Tiff", datadir + "/analysis/" + c + "_" + cell_id + "_stack.tif")
 		
 		#save ROIs
+		print('ROI - saving individual ROIs - selection')
 		rm.runCommand("Select All")
+		#rm.deselect()#should have same effect as select all - include all ROIs in ZIP
+		#rm.setSelectedIndexes(range(0, rm.getCount(), 1))
+		print('ROI - saving individual ROIs - save')
 		rm.save(datadir + "/analysis/" + c + "_" + cell_id + "_ROIs.zip")
+		print('ROI - saved individual ROIs sucessfully')
 		
 		#measure
 		IJ.run("Set Measurements...", "area mean min centroid center shape feret's skewness kurtosis display redirect=None decimal=3")
-		rm.runCommand("Select All")#should be redundant
-		rm.runCommand("Measure")				
+		print('ROI - measuring all')
+		rm.deselect()
+		print('running multiMeasure command on cloned image')
+		rm.multiMeasure(ImagePlus('cell_crop_mask', cell_crop_mask))
+		#rm.runCommand("Select All")#should be redundant
+		#rm.runCommand("Measure")
+		print('Ran measurements, getting Results table')
 		results = ResultsTable.getResultsTable()
 		#add groups for processing in R
 		full_ROI_groups = dict(ROI_groups, **pairwise_ROI_groups)#combine
@@ -307,6 +325,7 @@ for c in conditions:
 		
 		
 		#POOLED ROI ANALYSIS
+		print('ROI - starting pooled ROI analysis')
 		all_ROI_groups = ROI_groups#includes only selected organelles
 		for combo in combo_present:#from section above - checks whether both organelles in pair are selected
 			all_ROI_groups[combo] = pairwise_ROI_groups[combo]	
@@ -315,11 +334,15 @@ for c in conditions:
 			rm.selectGroup(all_ROI_groups[r])
 			r_nselected = len(rm.getSelectedIndexes())
 			if (r_nselected != rm.getCount()) and (r_nselected > 1):
+				print('ROI - combining ROIs in group ' + r)
+				cell_crop.show()
 				rm.runCommand("Combine")
 				rm.addRoi(cell_crop.getRoi())#IMPORTANT - depends on cell_crop.show() above
+				cell_crop.hide()
 				rm.selectGroup(all_ROI_groups[r])
 				#delete non-combined ROIs
 				r_all = rm.getSelectedIndexes()
+				print('removing uncombined ROIs')
 				r_last = r_all.pop(-1)
 				r_individual = r_all[:-1]
 				rm.rename(r_last, cell_id + "_" + r)
@@ -330,14 +353,22 @@ for c in conditions:
 				rm.rename(rm.getSelectedIndex(), cell_id + "_" + r)
 		
 				#save ROIs
-		rm.runCommand("Select All")
+		print('ROI - saving pooled ROIs')
+		#rm.runCommand("Select All")
+		rm.deselect()
 		rm.save(datadir + "/analysis/" + c + "_" + cell_id + "_POOLED_ROIs.zip")
 		
 		#MEASUREMENTS
 		results.reset()#might need to close for next line to work properly
+		rm.resetMultiMeasureResults()
 		IJ.run("Set Measurements...", "area centroid center shape feret's skewness kurtosis display redirect=None decimal=3")
-		rm.runCommand("Select All")#should be redundant
-		rm.runCommand("Measure")
+		print('ROI - selecting all to measure pooled')
+		#placeholder = cell_crop.duplicate().flattenStack()
+		#rm.runCommand("Select All")#should be redundant
+		rm.deselect()
+		print('running multiMeasure command on flattened image')
+		rm.multiMeasure(ImagePlus('cell_crop_mask', cell_crop_mask))
+		#rm.runCommand("Measure")
 		#add groups for processing in R - copied from above
 		full_ROI_groups = dict(ROI_groups, **pairwise_ROI_groups)#combine
 		groups_to_type = {v:k for k, v in full_ROI_groups.items()}
@@ -349,7 +380,8 @@ for c in conditions:
 		
 						
 		#max intensity stacks for total area covered
-		results.reset()
+		results.reset()#?
+		rm.resetMultiMeasureResults()
 		_, _, _, nSlices, _ = cell_crop.getDimensions()
 		slicenames = dict()
 		for i in range(1, nSlices + 1, 1):
@@ -377,7 +409,9 @@ for c in conditions:
 		#orgstack.show()
 		
 		rm.reset()
+		rm.resetMultiMeasureResults()
 		results.reset()
+		
 		
 		#save stack labels for interpreting tiff stacks in R
 		with open(datadir + "analysis\\" + c + "_" + cell_id + "_slice_labels.csv", "w") as f:#different path format then ImageJ
