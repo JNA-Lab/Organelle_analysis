@@ -311,11 +311,11 @@ for c in conditions:
 		IJ.run("Set Measurements...", "area mean min centroid center shape feret's skewness kurtosis display redirect=None decimal=3")
 		print('ROI - measuring all')
 		rm.deselect()
-		print('running multiMeasure command on cloned image')
-		rm.multiMeasure(ImagePlus('cell_crop_mask', cell_crop_mask))
-		#rm.runCommand("Select All")#should be redundant
-		#rm.runCommand("Measure")
-		print('Ran measurements, getting Results table')
+		#print('running multiMeasure command on cloned image')
+		#results = rm.multiMeasure(ImagePlus('cell_crop_mask', cell_crop_mask))
+		rm.runCommand("Select All")#should be redundant
+		rm.runCommand(cell_img, "Measure")#TODO - limit slices?
+		#print('Ran measurements, getting Results table')
 		results = ResultsTable.getResultsTable()
 		#add groups for processing in R
 		full_ROI_groups = dict(ROI_groups, **pairwise_ROI_groups)#combine
@@ -362,15 +362,15 @@ for c in conditions:
 		
 		#MEASUREMENTS
 		results.reset()#might need to close for next line to work properly
-		rm.resetMultiMeasureResults()
+		#rm.resetMultiMeasureResults()
 		IJ.run("Set Measurements...", "area centroid center shape feret's skewness kurtosis display redirect=None decimal=3")
 		print('ROI - selecting all to measure pooled')
 		#placeholder = cell_crop.duplicate().flattenStack()
-		#rm.runCommand("Select All")#should be redundant
+		rm.runCommand("Select All")#should be redundant
 		rm.deselect()
 		print('running multiMeasure command on flattened image')
-		rm.multiMeasure(ImagePlus('cell_crop_mask', cell_crop_mask))
-		#rm.runCommand("Measure")
+		#results = rm.multiMeasure(ImagePlus('cell_crop_mask', cell_crop_mask))
+		rm.runCommand(cell_img, "Measure")
 		#add groups for processing in R - copied from above
 		full_ROI_groups = dict(ROI_groups, **pairwise_ROI_groups)#combine
 		groups_to_type = {v:k for k, v in full_ROI_groups.items()}
@@ -383,7 +383,7 @@ for c in conditions:
 						
 		#max intensity stacks for total area covered
 		results.reset()#?
-		rm.resetMultiMeasureResults()
+		#rm.resetMultiMeasureResults()
 		_, _, _, nSlices, _ = cell_crop.getDimensions()
 		slicenames = dict()
 		for i in range(1, nSlices + 1, 1):
@@ -411,7 +411,7 @@ for c in conditions:
 		#orgstack.show()
 		
 		rm.reset()
-		rm.resetMultiMeasureResults()
+		#rm.resetMultiMeasureResults()
 		results.reset()
 		
 		
