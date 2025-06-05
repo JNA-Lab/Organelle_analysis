@@ -214,9 +214,11 @@ for c in conditions:
 		IJ.run(cells_copy, "Analyze Particles...", "size=0-Infinity add composite") #should just be one cell
 		#SOME CELLS RETURNING >1 - combine
 		if rm.getCount() > 1:
-			rm.selectGroup(ROI_groups["cells"])			
+			rm.selectGroup(ROI_groups["cells"])
+			cells_copy.show()
 			rm.runCommand("Combine")
 			rm.addRoi(cells_copy.getRoi())
+			cells_copy.hide()
 			#delete non-combined ROIs
 			rm.setSelectedIndexes(range(0, rm.getCount()-1, 1))#all but last
 			rm.runCommand("Delete")
@@ -424,11 +426,11 @@ for c in conditions:
 	
 	cells.close()
 	orgstack.close()
-	IJ.run("Close All", "")
+	#IJ.run("Close All", "")
 	rm.reset()
 	results.reset()
 	
 	
 rm.close()
-IJ.selectWindow("Results")
-IJ.run("Close")
+#IJ.selectWindow("Results")
+#IJ.run("Close")
