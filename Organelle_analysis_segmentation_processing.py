@@ -215,10 +215,10 @@ for c in conditions:
 		#SOME CELLS RETURNING >1 - combine
 		if rm.getCount() > 1:
 			rm.selectGroup(ROI_groups["cells"])
-			cells_copy.show()
-			rm.runCommand("Combine")
+			#cells_copy.show()
+			rm.runCommand(cells_copy, "Combine")
 			rm.addRoi(cells_copy.getRoi())
-			cells_copy.hide()
+			#cells_copy.hide()
 			#delete non-combined ROIs
 			rm.setSelectedIndexes(range(0, rm.getCount()-1, 1))#all but last
 			rm.runCommand("Delete")
@@ -229,9 +229,9 @@ for c in conditions:
 		cell_crop.setTitle(cell_id)
 		orgstack.hide()
 		print('ROI - adding cell boundary')
-		cell_crop.show()
+		#cell_crop.show()
 		rm.addRoi(cell_crop.getRoi())#cell boundary in cropped image
-		cell_crop.hide()
+		#cell_crop.hide()
 		rm.select(0)
 		rm.runCommand("Delete")#deleting original cell boundary - now in wrong place in cropped image
 		rm.rename(0, cell_id)
@@ -337,10 +337,10 @@ for c in conditions:
 			r_nselected = len(rm.getSelectedIndexes())
 			if (r_nselected != rm.getCount()) and (r_nselected > 1):
 				print('ROI - combining ROIs in group ' + r)
-				cell_crop.show()
-				rm.runCommand("Combine")
+				#cell_crop.show()
+				rm.runCommand(cell_crop, "Combine")
 				rm.addRoi(cell_crop.getRoi())#IMPORTANT - depends on cell_crop.show() above
-				cell_crop.hide()
+				#cell_crop.hide()
 				rm.selectGroup(all_ROI_groups[r])
 				#delete non-combined ROIs
 				r_all = rm.getSelectedIndexes()
@@ -432,5 +432,5 @@ for c in conditions:
 	
 	
 rm.close()
-#IJ.selectWindow("Results")
+#IJ.selectWindow("Results")#can't select when not displayed
 #IJ.run("Close")
