@@ -111,7 +111,7 @@ for(name in names(cells.pixels)){
   cent <- cells.cent[cells.cent$condcell == name,][1,]
   
   cell$dist_to_cent <- abs(sqrt((cell$x - cent$X)^2 + (cell$y - cent$Y)^2))
-  cell_angle_to_cent <- (atan2((cell$y - cent$Y), (cell$x - cent$X))*180)/pi
+  cell$angle_to_cent <- (atan2((cell$y - cent$Y), (cell$x - cent$X))*180)/pi
   
   cr <- subst(cells.rasters[[name]][['cell']], 255, NA)
   cell$dist_to_PM = as.data.frame(mask(distance(cr, exclude = 255), cells.rasters[[name]][['cell']], maskvalues = 0))[,1]#distance to nearest PM pixel (outside cell)
@@ -130,4 +130,6 @@ for(name in names(cells.pixels)){
 
 #TODO - pooled metrics
 integrated asymmetry, mean MDR per organelle/contact type, higher order contact sites(move?)
+```{r}
 
+```
