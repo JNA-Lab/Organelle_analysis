@@ -8,24 +8,34 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-library(readbitmap)
-# library(RImageJROI)
-# library(spatstat.geom)
-# library(sf)
 library(dplyr)
 library(terra)
 library(tidyterra)
-library(ggplot2)
-library(ggpubr)
-library(patchwork)
-library(Rcpp)
 
 ```
 
 
-*TEMPORARY - Run Organelle_analysis_ImageJ_metrics.Rmd first - will need access to certain variables
+Copied from Organelle_analysis_ImageJ_metrics.Rmd first - remove when combining
 ```{r}
-#SEE ABOVE - manual step
+dir <- choose.dir()
+files <- list.files(dir, pattern = ('\\.csv$|\\.zip$'), recursive = FALSE, include.dirs = FALSE)
+condcells <- unique(gsub('_results.csv||_POOLED_results.csv||_POOLED_ROIs.zip||_ROIs.zip||_summary_results.csv||_slice_labels.csv', '', files))
+
+setClass("Measurements", slots = c(data = "data.frame", cells = "data.frame", other = "data.frame"))
+
+#measurements cleaning/categories
+process_measurements <- function(dir, condition, file_pattern){
+  df <- read.csv(paste0(dir, '\\', condition, file_pattern))
+  df$ROI_name <- unlist(regmatches(df$Label, regexec("(?<=:).+(?=:)?", df$Label, perl = T)))
+  #TODO - this might break if trailing : missing - dependent on single/multi channel image - should be consistent with macro
+  df.cells = df[df$Type == 'cells',]
+  df.other = df[df$Type != 'cells',]
+  mes <- new("Measurements", data = df, cells = df.cells, other = df.other)
+  return(mes)
+}
+
+pooled_measurements <- lapply(condcells, function(c){process_measurements(dir, c, "_POOLED_results.csv")})
+names(pooled_measurements) <- condcells
 ```
 
 
@@ -128,8 +138,17 @@ for(name in names(cells.pixels)){
 
 ```
 
-#TODO - pooled metrics
-integrated asymmetry, mean MDR per organelle/contact type, higher order contact sites(move?)
+Mean MDR per organelle/contact type (averages over number of pixels in each)
 ```{r}
+adv_metrics <- data.frame(
+  condcell = condcells
+)
+for(o in slicenames[slicenames != 'cell']){
+  adv_metrics[paste0(o, '_MDR')] <- sapply(condcells, function(c){ mean(cells.pixels[[c]][cells.pixels[[c]][o]>0,]$norm) })
+}
+```
 
+Combining with the other metrics
+```{r}
+full_metrics <- dplyr::left_join(metrics, adv_metrics, by = join_by(condcell == condcell))
 ```
