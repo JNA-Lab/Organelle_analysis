@@ -100,7 +100,7 @@ px_round <- function(x,y){
   else if((y-yr)>=0){ yr <- yr + 0.5 }
   return(c(xr, yr))
 }
-cells.cent.pixels <- do.call(rbind, lapply(1:nrow(cells.cent), function(i){
+cells.cent.pixels <- do.call(rbind, lapply(1:nrow(cells.cent), function(i){#not using anywhere?
   row <- cells.cent[i,]
   px <- px_round(row$X, row$Y)
   df <- data.frame(x = px[1], y = px[2])

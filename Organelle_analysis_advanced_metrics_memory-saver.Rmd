@@ -1,0 +1,101 @@
+---
+title: "Organelle Analysis - Advanced Metrics - memory saver version"
+author: "Fiona M. Love"
+date: "2025-05-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(terra)
+#library(tidyterra)
+
+```
+
+
+Copied from Organelle_analysis_ImageJ_metrics.Rmd first - remove when combining
+```{r}
+dir <- choose.dir()
+files <- list.files(dir, pattern = ('\\.csv$|\\.zip$'), recursive = FALSE, include.dirs = FALSE)
+condcells <- unique(gsub('_results.csv||_POOLED_results.csv||_POOLED_ROIs.zip||_ROIs.zip||_summary_results.csv||_slice_labels.csv', '', files))
+
+setClass("Measurements", slots = c(data = "data.frame", cells = "data.frame", other = "data.frame"))
+
+#measurements cleaning/categories
+process_measurements <- function(dir, condition, file_pattern){
+  df <- read.csv(paste0(dir, '\\', condition, file_pattern))
+  df$ROI_name <- unlist(regmatches(df$Label, regexec("(?<=:).+(?=:)?", df$Label, perl = T)))
+  #TODO - this might break if trailing : missing - dependent on single/multi channel image - should be consistent with macro
+  df.cells = df[df$Type == 'cells',]
+  df.other = df[df$Type != 'cells',]
+  mes <- new("Measurements", data = df, cells = df.cells, other = df.other)
+  return(mes)
+}
+
+pooled_measurements <- lapply(condcells, function(c){process_measurements(dir, c, "_POOLED_results.csv")})
+names(pooled_measurements) <- condcells
+```
+
+
+Constants and functions
+```{r}
+slicenames <- read.csv(paste0(dir, '\\', condcells[1], '_slice_labels.csv'), header = FALSE)[,2]#running ONCE - should be consistent across batch
+
+px_round <- function(x,y){
+  xr <- round(x, digits = 0)
+  yr <- round(y, digits = 0)
+  if((x-xr)<0){ xr <- xr - 0.5 }
+  else if((x-xr)>=0){ xr <- xr + 0.5 }
+  if((y-yr)<0){ yr <- yr - 0.5 }
+  else if((y-yr)>=0){ yr <- yr + 0.5 }
+  return(c(xr, yr))
+}
+
+adv_metrics <- data.frame(
+  condcell = condcells
+)
+
+cent_type <- ifelse('nuclei' %in% slicenames, 'nuclei', 'cells')
+```
+
+```{r}
+
+for(c in condcells){
+  cell.raster <- rast(paste0(dir, '\\', c, '_stack.tif'))
+  names(cell.raster) <- slicenames
+  cell.raster <- extend(cell.raster, c(1,1), fill = 0)
+  crs(cell.raster) <- 'local' #IMPORTANT - treat as planar coordinates instead of lon/lat
+  
+  cell.pixels <- as.data.frame(cell.raster, xy = TRUE) %>% filter(cell >0)
+  
+  p <- pooled_measurements[[c]]@data
+  cell_cent <- p[p$Type == cent_type, c('X', 'Y')]
+  remove(p)
+  #cell_cent_pixels <- px_round(cell_cent$X, cell_cent$Y)
+  
+  cell.pixels$dist_to_cent <- abs(sqrt((cell.pixels$x - cell_cent$X[1])^2 + (cell.pixels$y - cell_cent$Y[1])^2))
+  cell.pixels$angle_to_cent <- (atan2((cell.pixels$y - cell_cent$Y[1]), (cell.pixels$x - cell_cent$X[1]))*180)/pi
+  
+  cr <- subst(cell.raster[['cell']], 255, NA)
+  
+  cell.pixels$dist_to_PM <- as.data.frame(mask(distance(cr, exclude = 255), cell.raster[['cell']], maskvalues = 0))[,1]#distance to nearest PM pixel (outside cell)
+  cell.pixels$norm <- cell.pixels$dist_to_cent/(cell.pixels$dist_to_cent + cell.pixels$dist_to_PM)
+  
+  for(o in slicenames[slicenames != 'cell']){
+    adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_MDR')] <- mean(cell.pixels[cell.pixels[,o]>0,]$norm)
+  }
+  
+  remove(cell.raster)
+  remove(cell.pixels)
+  remove(cell_cent)
+}
+
+```
+
+
+Combining with the other metrics
+```{r}
+full_metrics <- dplyr::left_join(metrics, adv_metrics, by = join_by(condcell == condcell))
+```
