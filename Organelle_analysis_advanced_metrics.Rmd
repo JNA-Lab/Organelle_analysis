@@ -10,7 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(dplyr)
 library(terra)
-library(tidyterra)
+library(ggplot2)#for cut functions, not graphing
+library(stringr)
 
 ```
 
@@ -114,6 +115,11 @@ for(name in names(cells.pixels)){
   cells.pixels[[name]] <- cells.pixels[[name]] %>% filter(cell > 0)
 }
 
+binangle = 5 #degree width of bins for asymmetry coefficient - MUST SPLIT 360 INTO EVEN NUMBER OF GROUPS - e.g. 7 or 8 won't work
+if((360/binangle) %% 2 != 0){ warning("Binangle must divide 360 into an even number of groups for the following code to work.") }
+```
+
+```{r}
 #-----calculate MDR-----
 for(name in names(cells.pixels)){
   cell <- cells.pixels[[name]]
@@ -122,6 +128,11 @@ for(name in names(cells.pixels)){
   
   cell$dist_to_cent <- abs(sqrt((cell$x - cent$X)^2 + (cell$y - cent$Y)^2))
   cell$angle_to_cent <- (atan2((cell$y - cent$Y), (cell$x - cent$X))*180)/pi
+  
+  #asymmetry values
+  cell$anglebin <- cut_width(cell$angle_to_cent, width = binangle, closed = 'left', boundary = 0)
+  # cell$anglebin_left <- as.integer(str_match(as.character(cell$anglebin), '\\[(-?\\d+)\\,')[,2])
+  # cell$anglebin_flipped <- sapply(cell$anglebin_left, function(i){ if(i < 0){ 0-(180-abs(i)) } else{ i } })
   
   cr <- subst(cells.rasters[[name]][['cell']], 255, NA)
   cell$dist_to_PM = as.data.frame(mask(distance(cr, exclude = 255), cells.rasters[[name]][['cell']], maskvalues = 0))[,1]#distance to nearest PM pixel (outside cell)
@@ -152,3 +163,26 @@ Combining with the other metrics
 ```{r}
 full_metrics <- dplyr::left_join(metrics, adv_metrics, by = join_by(condcell == condcell))
 ```
+
+
+Asymmetry
+```{r}
+for(o in slicenames){
+  adv_metrics[paste0(o, '_CoA')] <- sapply(condcells, function(c){ 
+      df <- cells.pixels[[c]]
+      df.org <- df[df[o] > 0,]
+      tab <- as.data.frame(table(df.org$anglebin))
+      tally = 0
+      halfcount <- nrow(tab)/2
+      for(n in 1:halfcount){
+        a <- abs(tab[n, 'Freq'] - tab[n + halfcount, 'Freq'])
+        tally <- tally + a
+      }
+      CoA <- tally/nrow(df.org)
+      return(CoA)
+    })
+}
+```
+
+
+
