@@ -86,20 +86,25 @@ for(c in condcells){
   cell.pixels$dist_to_PM <- as.data.frame(mask(distance(cr, exclude = 255), cell.raster[['cell']], maskvalues = 0))[,1]#distance to nearest PM pixel (outside cell)
   cell.pixels$norm <- cell.pixels$dist_to_cent/(cell.pixels$dist_to_cent + cell.pixels$dist_to_PM)
   
-  for(o in slicenames[slicenames != 'cell']){
-    adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_MDR')] <- mean(cell.pixels[cell.pixels[,o]>0,]$norm)
-  }
+  # for(o in slicenames[slicenames != 'cell']){
+  #   adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_MDR')] <- mean(cell.pixels[cell.pixels[,o]>0,]$norm)
+  # }
   for(o in slicenames){#including cell here - might normalise to cell asymmetry downstream
-      df.org <- cell.pixels[cell.pixels[o] > 0,]
-      tab <- as.data.frame(table(df.org$anglebin))
-      tally <- 0
-      halfcount <- nrow(tab)/2
-      for(n in 1:halfcount){
-        a <- abs(tab[n, 'Freq'] - tab[n + halfcount, 'Freq'])
-        tally <- tally + a
-      }
-      CoA <- tally/nrow(df.org)
-      adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_CoA')] <- CoA
+    df.org <- cell.pixels[cell.pixels[o] > 0,]
+    
+    #MDR  
+    adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_MDR')] <- mean(df.org$norm)
+    
+    #coefficient of asymmetry
+    tab <- as.data.frame(table(df.org$anglebin))
+    tally <- 0
+    halfcount <- nrow(tab)/2
+    for(n in 1:halfcount){
+      a <- abs(tab[n, 'Freq'] - tab[n + halfcount, 'Freq'])
+      tally <- tally + a
+    }
+    CoA <- tally/nrow(df.org)
+    adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_CoA')] <- CoA
   }
   
   remove(cell.raster)
