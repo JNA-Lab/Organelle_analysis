@@ -137,19 +137,10 @@ if('nuclei_area' %in% colnames(metrics)){
 ## Data cleaning ##
 ```{r}
 metrics[is.na(metrics)] <- 0
-#Tom specific:
+#Tom specific: replaces all bacterial measurements with 0 in uninfected conditions
 metrics[which(metrics$infected == 'UNinfected'),] <- metrics[which(metrics$infected == 'UNinfected'),] %>% mutate(across(contains('bacteria'), ~replace(.,1:length(.),0)))
 metrics[which(metrics$infected == '1dpi'),]$infected <- 'infected'
 ```
-
-
-
-## First attempt at PCA analysis on metric set - should narrow down (e.g. raw vs normalised values) ##
-```{r}
-testpca <- prcomp(metrics[,8:ncol(metrics)])
-fviz_pca_ind(testpca, col.ind = as.factor(metrics$infected), addEllipses = T, ellipse.type = 'confidence')
-```
-
 
 
 ## Extra Metrics ##
