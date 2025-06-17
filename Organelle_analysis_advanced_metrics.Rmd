@@ -159,12 +159,6 @@ for(o in slicenames[slicenames != 'cell']){
 }
 ```
 
-Combining with the other metrics
-```{r}
-full_metrics <- dplyr::left_join(metrics, adv_metrics, by = join_by(condcell == condcell))
-```
-
-
 Asymmetry
 ```{r}
 for(o in slicenames){
@@ -184,5 +178,9 @@ for(o in slicenames){
 }
 ```
 
+Combining with the other metrics
+```{r}
+full_metrics <- dplyr::left_join(metrics, adv_metrics, by = join_by(condcell == condcell))
+```
 
 
