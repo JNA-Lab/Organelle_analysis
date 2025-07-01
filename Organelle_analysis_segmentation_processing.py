@@ -40,33 +40,33 @@ options.addMessage("Select which organelles to analyse,and how they \nare repres
 options.addCheckbox('Cell boundaries (required)', True)
 options.addToSameRow()
 #options.addStringField('', 'cells')
-options.addStringField('', "_cp_masks")#TEMPORARY
+options.addStringField('', "_composite_seg_mask")#TEMPORARY
 #for o in organelles:
 	#options.addCheckbox(o, True)
 	#options.addToSameRow()
 	#options.addStringField('', o.lower())
 #***TEMPORARY***#TODO - variables for saving in custom values
-options.addCheckbox("nuclei", False)
+options.addCheckbox("nuclei", True)
 options.addToSameRow()
-options.addStringField("", "")
+options.addStringField("", "_composite_seg_nucleus_mask")
 options.addCheckbox("Golgi", True)
 options.addToSameRow()
-options.addStringField("", "-Best_1dpi__2_golgi")
+options.addStringField("", "-_golgi")
 options.addCheckbox("peroxisomes", True)
 options.addToSameRow()
-options.addStringField("", "-Best_so_far_perox")
+options.addStringField("", "-_perox")
 options.addCheckbox("ER", True)
 options.addToSameRow()
-options.addStringField("", "-Best_1dpi_ER")
+options.addStringField("", "-_ER")
 options.addCheckbox("mitochondria", True)
 options.addToSameRow()
-options.addStringField("", "-Best_1dpi_2_mito")
+options.addStringField("", "-_mito")
 options.addCheckbox("lysosomes", False)
 options.addToSameRow()
 options.addStringField("", "")
 options.addCheckbox("bacteria", True)
 options.addToSameRow()
-options.addStringField("", "-Best_1dpi_Ot_LD")
+options.addStringField("", "-Ot_LD")
 #***************
 options.addMessage("\n\n")
 options.addCheckbox("Calculate pairwise overlaps?", True)
@@ -126,14 +126,19 @@ filenames_filtered = [f for f in filenames if re.search(ext + "$", f)]#filter to
 
 #find conditions from filenames
 conditions = set()
-for f in filenames_filtered:#TODO - filter to selected extension
-	f = f.replace("." + ext, "")
+filenames_key = dict()
+for f in filenames_filtered:
+	g = f.replace("." + ext, "")
 	for o in org_regex.values():
-		f = f.replace(o, "")#not actually regex matching - probably best for now
-	f = f.replace(cell_regex, "")
-	conditions.add(f)
-	
-
+		g = g.replace(o, "")#not actually regex matching - probably best for now
+	g = g.replace(cell_regex, "")
+	conditions.add(g)
+	if g in filenames_key.keys():
+		filenames_key[g].append(f)
+	else:
+		filenames_key[g] = [f]
+print(conditions)
+print(filenames_key)
 
 
 #set up ROI manager
@@ -150,7 +155,8 @@ progress = 0
 for c in conditions:
 	progress += 1
 	#open and rename images
-	c_filenames = [f for f in filenames if c in f]#find filenames matching condition
+	c_filenames = filenames_key[c]#find filenames matching condition
+	print(c_filenames)
 	c_cell_image = str()
 	imp_key = {}
 	for cf in c_filenames:
@@ -164,7 +170,6 @@ for c in conditions:
 			if cell_regex in cf:
 				c_cell_image = cf
 			imp.close()#close for now		
-	print(imp_key)
 	
 	images_to_stack = []
 	#ORGANELLE THRESHOLDING
@@ -228,7 +233,6 @@ for c in conditions:
 		cell_crop = orgstack.crop([rm.getRoi(0)], "stack")[0]
 		cell_crop.setTitle(cell_id)
 		orgstack.hide()
-		print('ROI - adding cell boundary')
 		#cell_crop.show()
 		rm.addRoi(cell_crop.getRoi())#cell boundary in cropped image
 		#cell_crop.hide()
@@ -257,16 +261,13 @@ for c in conditions:
 		cell_img.close()
 		#iterate over organelles and contact types
 		for org in organelles_selected:
-			print('ROI - setting organelle group ' + org)
 			Roi.setDefaultGroup(ROI_groups[org])
 			#IJ.selectWindow(org)
 			org_img = crop_key[org]#IJ.getImage()
-			print('Analysing ' + org)
 			IJ.run(org_img, "Analyze Particles...", "size=0-Infinity add composite")
 			#rename by slice/organelle/cell
 			rm.deselect()
 			rm.selectGroup(ROI_groups[org])
-			print('ROI - getting ' + org + ' indices')
 			roi_start = rm.getSelectedIndex()
 			roi_count = rm.selected()
 			if roi_count > 0:
@@ -277,14 +278,12 @@ for c in conditions:
 		for combo in pairwise_groups.keys():
 			if set(pairwise_groups[combo]).issubset(organelles_selected):
 				combo_present.append(combo)
-				print('ROI - setting pairwise group ' + combo)
 				Roi.setDefaultGroup(pairwise_ROI_groups[combo])
 				#IJ.selectWindow(combo)
 				combo_img = crop_key[combo]#IJ.getImage()
 				IJ.run(combo_img, "Analyze Particles...", "size=0-Infinity add composite")
 				rm.deselect()
 				rm.selectGroup(pairwise_ROI_groups[combo])
-				print('ROI - getting ' + combo + ' indices')
 				combo_roi_start = rm.getSelectedIndex()
 				combo_roi_count = rm.selected()
 				if combo_roi_count > 0:
@@ -296,20 +295,17 @@ for c in conditions:
 		#cell_crop.show()#for pooled ROI measurements
 		cell_crop_copy = cell_crop.duplicate()
 		HyperStackConverter.toHyperStack(cell_crop_copy, len(images_to_stack) + 1, 1, 1)#+1 for added cell mask
+		print('cell ID - ' + cell_id)
 		IJ.saveAs(cell_crop_copy, "Tiff", datadir + "/analysis/" + c + "_" + cell_id + "_stack.tif")
 		
 		#save ROIs
-		print('ROI - saving individual ROIs - selection')
 		rm.runCommand("Select All")
 		#rm.deselect()#should have same effect as select all - include all ROIs in ZIP
 		#rm.setSelectedIndexes(range(0, rm.getCount(), 1))
-		print('ROI - saving individual ROIs - save')
 		rm.save(datadir + "/analysis/" + c + "_" + cell_id + "_ROIs.zip")
-		print('ROI - saved individual ROIs sucessfully')
 		
 		#measure
 		IJ.run("Set Measurements...", "area mean min centroid center shape feret's skewness kurtosis display redirect=None decimal=3")
-		print('ROI - measuring all')
 		rm.deselect()
 		#print('running multiMeasure command on cloned image')
 		#results = rm.multiMeasure(ImagePlus('cell_crop_mask', cell_crop_mask))
@@ -327,7 +323,6 @@ for c in conditions:
 		
 		
 		#POOLED ROI ANALYSIS
-		print('ROI - starting pooled ROI analysis')
 		all_ROI_groups = ROI_groups#includes only selected organelles
 		for combo in combo_present:#from section above - checks whether both organelles in pair are selected
 			all_ROI_groups[combo] = pairwise_ROI_groups[combo]	
@@ -336,7 +331,6 @@ for c in conditions:
 			rm.selectGroup(all_ROI_groups[r])
 			r_nselected = len(rm.getSelectedIndexes())
 			if (r_nselected != rm.getCount()) and (r_nselected > 1):
-				print('ROI - combining ROIs in group ' + r)
 				#cell_crop.show()
 				rm.runCommand(cell_crop, "Combine")
 				rm.addRoi(cell_crop.getRoi())#IMPORTANT - depends on cell_crop.show() above
@@ -344,7 +338,6 @@ for c in conditions:
 				rm.selectGroup(all_ROI_groups[r])
 				#delete non-combined ROIs
 				r_all = rm.getSelectedIndexes()
-				print('removing uncombined ROIs')
 				r_last = r_all.pop(-1)
 				r_individual = r_all[:-1]
 				rm.rename(r_last, cell_id + "_" + r)
@@ -355,7 +348,6 @@ for c in conditions:
 				rm.rename(rm.getSelectedIndex(), cell_id + "_" + r)
 		
 				#save ROIs
-		print('ROI - saving pooled ROIs')
 		#rm.runCommand("Select All")
 		rm.deselect()
 		rm.save(datadir + "/analysis/" + c + "_" + cell_id + "_POOLED_ROIs.zip")
@@ -364,11 +356,9 @@ for c in conditions:
 		results.reset()#might need to close for next line to work properly
 		#rm.resetMultiMeasureResults()
 		IJ.run("Set Measurements...", "area centroid center shape feret's skewness kurtosis display redirect=None decimal=3")
-		print('ROI - selecting all to measure pooled')
 		#placeholder = cell_crop.duplicate().flattenStack()
 		rm.runCommand("Select All")#should be redundant
 		rm.deselect()
-		print('running multiMeasure command on flattened image')
 		#results = rm.multiMeasure(ImagePlus('cell_crop_mask', cell_crop_mask))
 		rm.runCommand(cell_img, "Measure")
 		#add groups for processing in R - copied from above
@@ -388,7 +378,6 @@ for c in conditions:
 		slicenames = dict()
 		for i in range(1, nSlices + 1, 1):
 			slicenames[cell_crop.getImageStack().getShortSliceLabel(i)] = i
-		print(slicenames)
 		org_slicenames = dict((k, slicenames[k]) for k in organelles_selected)
 		combo_slicenames = dict((k, slicenames.get(k)) for k in combo_present)
 		cell_crop_mainorg = SM.makeSubstack(cell_crop, ','.join([str(i) for i in org_slicenames.values()]))
