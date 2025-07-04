@@ -1,16 +1,15 @@
 from ij import ImagePlus, IJ
-from ij.gui import GenericDialog, NonBlockingGenericDialog, Roi
+from ij.gui import GenericDialog, Roi
 from ij.io import DirectoryChooser
 from ij.measure import ResultsTable
-from ij.plugin import ImageCalculator, StackEditor, ImagesToStack, SubstackMaker, ZProjector, HyperStackConverter
+from ij.plugin import ImageCalculator, ImagesToStack, SubstackMaker, ZProjector, HyperStackConverter
 from ij.plugin.frame import RoiManager
 from ij.plugin.filter import ParticleAnalyzer
-from ij.process import ImageProcessor
-from java.awt import Color
 import os
 import re
 
 organelles = ['nuclei', 'Golgi', 'peroxisomes', 'ER', 'mitochondria', 'lysosomes', 'bacteria']
+#TODO - replace 'bacteria' with configurable 'other'
 
 #***USER DEFAULTS***
 #change these values to set your default cell/organelle suffixes
@@ -23,7 +22,7 @@ default_org["ER"] = "-Best_1dpi_ER"
 default_org["mitochondria"] = "-Best_1dpi_2_mito"
 default_org["lysosomes"] = "_lysosomes"
 default_org["bacteria"] = "-Best_1dpi_Ot_LD"
-default_checkboxes = [False, True, True, True, True, False, True]#in same organelle order as above
+default_checkboxes = [False, True, True, True, True, False, True]#in same organelle order as above (cell boundaries are mandatory)
 #*********************
 
 
@@ -130,7 +129,6 @@ for f in filenames_filtered:
 RM = RoiManager(False)#don't display
 rm = RM.getRoiManager()
 rm.hide()
-SE = StackEditor()
 I2S = ImagesToStack()
 SM = SubstackMaker()
 PA = ParticleAnalyzer()
