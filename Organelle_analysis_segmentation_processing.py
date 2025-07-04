@@ -40,33 +40,40 @@ options.addMessage("Select which organelles to analyse,and how they \nare repres
 options.addCheckbox('Cell boundaries (required)', True)
 options.addToSameRow()
 #options.addStringField('', 'cells')
-options.addStringField('', "_composite_seg_mask")#TEMPORARY
+#options.addStringField('', "_composite_seg_mask")#TEMPORARY
+options.addStringField('', "_cp_masks")
 #for o in organelles:
 	#options.addCheckbox(o, True)
 	#options.addToSameRow()
 	#options.addStringField('', o.lower())
 #***TEMPORARY***#TODO - variables for saving in custom values
-options.addCheckbox("nuclei", True)
+#options.addCheckbox("nuclei", True)
+options.addCheckbox("nuclei", False)
 options.addToSameRow()
 options.addStringField("", "_composite_seg_nucleus_mask")
 options.addCheckbox("Golgi", True)
 options.addToSameRow()
-options.addStringField("", "-_golgi")
+#options.addStringField("", "-_golgi")
+options.addStringField("", "-Best_1dpi__2_golgi")
 options.addCheckbox("peroxisomes", True)
 options.addToSameRow()
-options.addStringField("", "-_perox")
+#options.addStringField("", "-_perox")
+options.addStringField("", "-Best_so_far_perox")
 options.addCheckbox("ER", True)
 options.addToSameRow()
-options.addStringField("", "-_ER")
+#options.addStringField("", "-_ER")
+options.addStringField("", "-Best_1dpi_ER")
 options.addCheckbox("mitochondria", True)
 options.addToSameRow()
-options.addStringField("", "-_mito")
+#options.addStringField("", "-_mito")
+options.addStringField("", "-Best_1dpi_2_mito")
 options.addCheckbox("lysosomes", False)
 options.addToSameRow()
 options.addStringField("", "")
 options.addCheckbox("bacteria", True)
 options.addToSameRow()
-options.addStringField("", "-Ot_LD")
+#options.addStringField("", "-Ot_LD")
+options.addStringField("", "-Best_1dpi_Ot_LD")
 #***************
 options.addMessage("\n\n")
 options.addCheckbox("Calculate pairwise overlaps?", True)
@@ -205,8 +212,13 @@ for c in conditions:
 	#Check max value
 	cells_max = int(cells.getStatistics().max) #converting double to int - beware of rounding bugs
 	
+	#create dict for saving ROIs (aligned to original image)
+	cells_ROIs_orig = dict()
+	pooled_ROIs_per_cell = dict()
+	
 	#Per step (cell) loop:
 	for i in range(1, cells_max + 1, 1):
+		cell_id = "cell_" + str(i)
 		#duplicate cell image
 		cells_copy = cells.duplicate()
 		cells_copy.setTitle("cells_DUPLICATE")
@@ -227,9 +239,10 @@ for c in conditions:
 			#delete non-combined ROIs
 			rm.setSelectedIndexes(range(0, rm.getCount()-1, 1))#all but last
 			rm.runCommand("Delete")
+		rm.rename(0, cell_id)#renaming for image-wide list
+		cells_ROIs_orig[cell_id] = rm.getRoi(0)
 		#duplicate stack and clear outside ROI
-		rm.select(0)
-		cell_id = "cell_" + str(i)
+		rm.select(0)#probably redundant
 		cell_crop = orgstack.crop([rm.getRoi(0)], "stack")[0]
 		cell_crop.setTitle(cell_id)
 		orgstack.hide()
@@ -239,7 +252,7 @@ for c in conditions:
 		rm.select(0)
 		rm.runCommand("Delete")#deleting original cell boundary - now in wrong place in cropped image
 		rm.rename(0, cell_id)
-		rm.select(cell_crop, 0)
+		rm.select(cell_crop, 0)		
 		IJ.run(cell_crop, "Clear Outside", "stack")
 		cell_crop_mask = cell_crop.createRoiMask()
 		cell_crop.getImageStack().addSlice('cell', cell_crop_mask)
@@ -351,6 +364,12 @@ for c in conditions:
 		#rm.runCommand("Select All")
 		rm.deselect()
 		rm.save(datadir + "/analysis/" + c + "_" + cell_id + "_POOLED_ROIs.zip")
+		for i in range(0, rm.getCount(), 1):
+			r = rm.getRoi(i)
+			cb = cells_ROIs_orig[cell_id].getBounds()
+			r.translate(cb.x, cb.y)
+		pooled_ROIs_per_cell[cell_id] = rm.getRoisAsArray()
+			
 		
 		#MEASUREMENTS
 		results.reset()#might need to close for next line to work properly
@@ -392,6 +411,7 @@ for c in conditions:
 		IJ.run(pairwise_max, "Analyze Particles...", "size=0-Infinity summarize composite")
 		results.save(datadir + "/analysis/" + c + "_" + cell_id + "_summary_results.csv")
 		
+		
 		#clear ROIs, results, leave stack and cell image open (close duplicates)
 		cells_copy.close()
 		cell_crop.close()
@@ -405,7 +425,7 @@ for c in conditions:
 		
 		
 		#save stack labels for interpreting tiff stacks in R
-		with open(datadir + "analysis\\" + c + "_" + cell_id + "_slice_labels.csv", "w") as f:#different path format then ImageJ
+		with open(datadir + "analysis\\" + c + "_" + cell_id + "_slice_labels.csv", "w") as f:#different path format than ImageJ
 			for i in range(1, len(slicenames) + 1, 1):
 				f.write(str(i) + "," + slicenames.keys()[list(slicenames.values()).index(i)] + "\n")
 		#TODO - move combo_present and this outside of loop - should be the same for all cells and conditions in a batch
@@ -417,9 +437,28 @@ for c in conditions:
 	orgstack.close()
 	#IJ.run("Close All", "")
 	rm.reset()
-	results.reset()
 	
+	for i in range(0, len(cells_ROIs_orig), 1):
+		k = cells_ROIs_orig.keys()[i]
+		v = cells_ROIs_orig[k]
+		rm.addRoi(v)
+		rm.rename(i, k)
+	rm.deselect()
+	rm.save(datadir + "/analysis/" + c + "_ALL_CELL_ROIs.zip")
+	rm.reset()
+	for i in range(0, len(pooled_ROIs_per_cell), 1):
+		k = pooled_ROIs_per_cell.keys()[i]
+		vl = pooled_ROIs_per_cell[k]
+		for v in vl:
+			rm.addRoi(v)
+	rm.deselect()
+	rm.save(datadir + "/analysis/" + c + "_ALL_ORGANELLE_ROIs.zip")
+	rm.reset()
+	
+	
+	results.reset()
 	
 rm.close()
 #IJ.selectWindow("Results")#can't select when not displayed
 #IJ.run("Close")
+
