@@ -19,7 +19,8 @@ Copied from Organelle_analysis_ImageJ_metrics.Rmd first - remove when combining
 ```{r}
 dir <- choose.dir()
 files <- list.files(dir, pattern = ('\\.csv$|\\.zip$'), recursive = FALSE, include.dirs = FALSE)
-condcells <- unique(gsub('_results.csv||_POOLED_results.csv||_POOLED_ROIs.zip||_ROIs.zip||_summary_results.csv||_slice_labels.csv', '', files))
+files <- files[-which(grepl('\\_ALL\\_CELL\\_ROIs\\.zip$|\\_ALL\\_ORGANELLE\\_ROIs\\.zip$', files))]
+condcells <- unique(gsub('_results.csv||_POOLED_results.csv||_POOLED_ROIs.zip||_ROIs.zip||_summary_results.csv||_slice_labels.csv', '', files))#updated for cell-by-cell processing
 
 setClass("Measurements", slots = c(data = "data.frame", cells = "data.frame", other = "data.frame"))
 
