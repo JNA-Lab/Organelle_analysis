@@ -69,7 +69,6 @@ if((360/binangle) %% 2 != 0){ warning("Binangle must divide 360 into an even num
 for(c in condcells){
   cell.raster <- rast(paste0(dir, '\\', c, '_stack.tif'))
   names(cell.raster) <- slicenames
-  cell.raster <- extend(cell.raster, c(1,1), fill = 0)
   crs(cell.raster) <- 'local' #IMPORTANT - treat as planar coordinates instead of lon/lat
   
   cell.pixels <- as.data.frame(cell.raster, xy = TRUE) %>% filter(cell >0)
@@ -82,6 +81,7 @@ for(c in condcells){
   cell.pixels$angle_to_cent <- (atan2((cell.pixels$y - cell_cent$Y[1]), (cell.pixels$x - cell_cent$X[1]))*180)/pi
   cell.pixels$anglebin <- cut_width(cell.pixels$angle_to_cent, width = binangle, closed = 'left', boundary = 0)
   
+  cell.raster <- extend(cell.raster, c(1,1), fill = 0)
   cr <- subst(cell.raster[['cell']], 255, NA)
   
   cell.pixels$dist_to_PM <- as.data.frame(mask(distance(cr, exclude = 255), cell.raster[['cell']], maskvalues = 0))[,1]#distance to nearest PM pixel (outside cell)
