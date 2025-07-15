@@ -13,16 +13,16 @@ organelles = ['nuclei', 'Golgi', 'peroxisomes', 'ER', 'mitochondria', 'lysosomes
 
 #***USER DEFAULTS***
 #change these values to set your default cell/organelle suffixes
-default_cells = "_cp_masks"
+default_cells = "_Max_Z_Project_cp_masks"
 default_org = dict()
-default_org["nuclei"] = "_composite_seg_nucleus_mask"
-default_org["Golgi"] = "-Best_1dpi__2_golgi"
-default_org["peroxisomes"] = "-Best_so_far_perox"
-default_org["ER"] = "-Best_1dpi_ER"
-default_org["mitochondria"] = "-Best_1dpi_2_mito"
-default_org["lysosomes"] = "_lysosomes"
+default_org["nuclei"] = "_Max_Z_Project_cp_nuclei"
+default_org["Golgi"] = "-subc_Golgi_v13_nucleus_&_perox_subtraction"
+default_org["peroxisomes"] = "-subc_Peroxisomes_v4"
+default_org["ER"] = "-subc_ER_Tom_Allen"
+default_org["mitochondria"] = "-subc_Mitochondria_v4"
+default_org["lysosomes"] = "-subc_Lysosomes_v4"
 default_org["bacteria"] = "-Best_1dpi_Ot_LD"
-default_checkboxes = [False, True, True, True, True, False, True]#in same organelle order as above (cell boundaries are mandatory)
+default_checkboxes = [True, True, True, True, True, True, False]#in same organelle order as above (cell boundaries are mandatory)
 #*********************
 
 
@@ -230,9 +230,8 @@ for c in conditions:
 			ip = cell_crop_stack.getProcessor(i)
 			i = ImagePlus(label, ip)
 			crop_key[label] = i
-		#select and close cell slice image - ROI already added
+		#define cell slice image for later measurements
 		cell_img = crop_key['cell']
-		cell_img.close()
 		#iterate over organelles and contact types
 		for org in organelles_selected:
 			Roi.setDefaultGroup(ROI_groups[org])
@@ -313,11 +312,6 @@ for c in conditions:
 		#save ROIs
 		rm.deselect()
 		rm.save(datadir + "/analysis/" + c + "_" + cell_id + "_POOLED_ROIs.zip")
-		for i in range(0, rm.getCount(), 1):
-			r = rm.getRoi(i)
-			cb = cells_ROIs_orig[cell_id].getBounds()
-			r.translate(cb.x, cb.y)
-		pooled_ROIs_per_cell[cell_id] = rm.getRoisAsArray()
 			
 		
 		#MEASUREMENTS
@@ -334,6 +328,8 @@ for c in conditions:
 		
 		#save measurements
 		results.save(datadir + "/analysis/" + c + "_" + cell_id + "_POOLED_results.csv")
+		
+
 		
 						
 		#max intensity stacks for total area covered
@@ -357,9 +353,18 @@ for c in conditions:
 		results.save(datadir + "/analysis/" + c + "_" + cell_id + "_summary_results.csv")
 		
 		
+		#move ROIs to original cell position and save to persistent dict
+		for i in range(0, rm.getCount(), 1):
+			r = rm.getRoi(i)
+			cb = cells_ROIs_orig[cell_id].getBounds()
+			r.translate(cb.x, cb.y)
+		pooled_ROIs_per_cell[cell_id] = rm.getRoisAsArray()
+		
+		
 		#clear ROIs, results, leave stack and cell image open (close duplicates)
 		cells_copy.close()
 		cell_crop.close()
+		cell_img.close()
 
 		
 		rm.reset()
