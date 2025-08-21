@@ -123,6 +123,7 @@ metrics$total_organelle_area <- sapply(condcells, function(c){df <- summary_meas
 metrics$total_organelle_area_norm_cell <- metrics$total_organelle_area/metrics$cell_area
 metrics$total_contact_area <- sapply(condcells, function(c){df <- summary_measurements[[c]]@data; df[df$Slice == 'pairwise_contact_sites','Total.Area'][1]})
 metrics$total_contact_area_norm_cell <- metrics$total_contact_area/metrics$cell_area
+metrics$total_contact_area_norm_organelles <- metrics$total_contact_area/metrics$total_organelle_area
 
 if('nuclei_area' %in% colnames(metrics)){
   metrics$cytoplasmic_area <- metrics$cell_area - metrics$nuclei_area
