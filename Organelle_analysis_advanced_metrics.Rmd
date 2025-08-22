@@ -44,6 +44,8 @@ names(pooled_measurements) <- condcells
 Reading in TIF stacks for each cell and creating pixel tables
 ```{r}
 slicenames <- read.csv(paste0(dir, '\\', condcells[1], '_slice_labels.csv'), header = FALSE)[,2]#running ONCE - should be consistent across batch
+#TODO - 'core organelles' specified in CSV - hardcoding for now to test
+organelles <- c('Golgi', 'peroxisomes', 'ER', 'mitochondria', 'lyosomes')
 
 cells.rasters <- lapply(condcells, function(c){ 
   r <- rast(paste0(dir, '\\', c, '_stack.tif'))
@@ -177,6 +179,13 @@ for(o in slicenames){
       return(CoA)
     })
 }
+```
+
+
+Contact (overlap) metrics
+```{r}
+
+
 ```
 
 Combining with the other metrics
