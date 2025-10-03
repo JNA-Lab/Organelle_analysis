@@ -198,6 +198,8 @@ for c in conditions:
 		Roi.setDefaultGroup(ROI_groups["cells"])#TODO - dynamic?
 		IJ.run(cells_copy, "Analyze Particles...", "size=0-Infinity add composite") #should just be one cell
 		#SOME CELLS RETURNING >1 - combine
+		if rm.getCount() == 0:#No cell for this value - excluded, deleted, etc.
+			continue
 		if rm.getCount() > 1:
 			rm.selectGroup(ROI_groups["cells"])
 			rm.runCommand(cells_copy, "Combine")
