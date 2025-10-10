@@ -137,9 +137,15 @@ for(name in names(cells.pixels)){
   # cell$anglebin_left <- as.integer(str_match(as.character(cell$anglebin), '\\[(-?\\d+)\\,')[,2])
   # cell$anglebin_flipped <- sapply(cell$anglebin_left, function(i){ if(i < 0){ 0-(180-abs(i)) } else{ i } })
   
-  cr <- subst(cells.rasters[[name]][['cell']], 255, NA)
+  cr <- subst(cells.rasters[[name]][['cell']], 255, NA)#cell raster
+  #cytor <- subst(cells.rasters[[name]][['cell']]-cells.rasters[[name]][['nuclei']], 255, NA)#cytoplasm raster
+  
   cell$dist_to_PM = as.data.frame(mask(distance(cr, exclude = 255), cells.rasters[[name]][['cell']], maskvalues = 0))[,1]#distance to nearest PM pixel (outside cell)
+  cell$dist_to_NE = as.data.frame(mask(distance(cells.rasters[[name]][['nuclei']], target = 0), cells.rasters[[name]][['cell']], maskvalues = 0))[,1]
+ #distance to nearest nucleus pixel (NOT EDGE OF NUCLEUS)
+  
   cell$norm = cell$dist_to_cent/(cell$dist_to_cent + cell$dist_to_PM)
+  cell$NE_norm = cell$dist_to_NE/(cell$dist_to_NE + cell$dist_to_PM)
   
   #TODO - calculate and compare to above values
   # cell$grid_to_cent
@@ -159,6 +165,7 @@ adv_metrics <- data.frame(
 )
 for(o in slicenames[slicenames != 'cell']){
   adv_metrics[paste0(o, '_MDR')] <- sapply(condcells, function(c){ mean(cells.pixels[[c]][cells.pixels[[c]][o]>0,]$norm) })
+  adv_metrics[paste0(o, '_NE_MDR')] <- sapply(condcells, function(c){ mean(cells.pixels[[c]][cells.pixels[[c]][o]>0,]$NE_norm) })
 }
 ```
 

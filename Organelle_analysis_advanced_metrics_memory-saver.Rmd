@@ -85,7 +85,10 @@ for(c in condcells){
   cr <- subst(cell.raster[['cell']], 255, NA)
   
   cell.pixels$dist_to_PM <- as.data.frame(mask(distance(cr, exclude = 255), cell.raster[['cell']], maskvalues = 0))[,1]#distance to nearest PM pixel (outside cell)
-  cell.pixels$norm <- cell.pixels$dist_to_cent/(cell.pixels$dist_to_cent + cell.pixels$dist_to_PM)
+  cell$dist_to_nucleus = as.data.frame(mask(distance(cell.raster[['nuclei']], target = 0), cell.raster[['cell']], maskvalues = 0))[,1]#distance to nearest nucleus pixel (0 if overlapping)
+  
+  cell.pixels$cent_norm <- cell.pixels$dist_to_cent/(cell.pixels$dist_to_cent + cell.pixels$dist_to_PM)
+  cell.pixels$nuc_norm <- cell.pixels$dist_to_nucleus/(cell.pixels$dist_to_nucleus + cell.pixels$dist_to_PM)
   
   # for(o in slicenames[slicenames != 'cell']){
   #   adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_MDR')] <- mean(cell.pixels[cell.pixels[,o]>0,]$norm)
@@ -94,7 +97,8 @@ for(c in condcells){
     df.org <- cell.pixels[cell.pixels[o] > 0,]
     
     #MDR  
-    adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_MDR')] <- mean(df.org$norm)
+    adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_centroid_MDR')] <- mean(df.org$norm)
+    adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_nucleus_MDR')] <- mean(df.org$nuc_norm)
     
     #coefficient of asymmetry
     tab <- as.data.frame(table(df.org$anglebin))
