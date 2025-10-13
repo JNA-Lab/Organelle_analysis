@@ -7,8 +7,11 @@ from ij.plugin.frame import RoiManager
 from ij.plugin.filter import ParticleAnalyzer
 import os
 import re
+from itertools import combinations#for organelle overlaps
 
 organelles = ['nuclei', 'Golgi', 'peroxisomes', 'ER', 'mitochondria', 'lysosomes', 'other']
+organelles_short = {'nuclei':'n', 'Golgi':'g', 'peroxisomes':'p', 'ER':'e', 'mitochondria':'m', 'lysosomes':'l', 'other':'o'}#for pixel overlaps; must be unique
+	#NOTE: 'other' key will be replaced by custom 'other' name, but short code will remain 'o'
 
 #***USER DEFAULTS***
 #change these values to set your default cell/organelle suffixes
@@ -56,7 +59,8 @@ for i in range(0, len(organelles), 1):
 	options.addStringField('', default_org[o])
 options.addMessage("\n\n")
 options.addStringField("Other organelle", other_name)
-options.addCheckbox("Calculate pairwise overlaps?", True)
+options.addMessage("\n\n")
+options.addCheckbox("Calculate pixel overlaps?", True)
 options.showDialog()
 
 if options.wasOKed():#is this necessary?
@@ -82,37 +86,30 @@ if options.wasOKed():#is this necessary?
 	if org_bool["other"] == True:#TODO - make this a bit neater
 		org_regex[other_name] = org_regex["other"]
 		del org_regex["other"]
+		organelles_short[other_name] = organelles_short["other"]
+		del organelles_short["other"]
 		organelles_selected = [other_name if o == "other" else o for o in organelles_selected]#replace with custom organelle name
-	
+		
 	#ROI groups
 	ROI_groups = dict(zip(organelles_selected, list(range(2, len(organelles_selected) + 2, 1))))
 	ROI_groups["cells"] = 1
 	
-	#pairwise contact groups and ROI groups
-	if contacts_bool == True:
-		pairwise_groups = {"ng": ("nuclei", "Golgi"),
-							"np": ("nuclei", "peroxisomes"),
-							"ne": ("nuclei", "ER"),
-							"nm": ("nuclei", "mitochondria"),
-							"nl": ("nuclei", "lysosomes"),
-							"nb": ("nuclei", "bacteria"),
-							"gp": ("Golgi", "peroxisomes"),
-							"ge": ("Golgi", "ER"),
-							"gm": ("Golgi", "mitochondria"),
-							"gl": ("Golgi", "lysosomes"),
-							"gb": ("Golgi", "bacteria"),
-							"pe": ("peroxisomes", "ER"),
-							"pm": ("peroxisomes", "mitochondria"),
-							"pl": ("peroxisomes", "lysosomes"),
-							"pb": ("peroxisomes", "bacteria"),
-							"em": ("ER", "mitochondria"),
-							"el": ("ER", "lysosomes"),
-							"eb": ("ER", "bacteria"),
-							"ml": ("mitochondria", "lysosomes"),
-							"mb": ("mitochondria", "bacteria"),
-							"lb": ("lysosomes", "bacteria")}#TODO - ...
-		pairwise_ROI_groups = dict(zip(pairwise_groups.keys(), range(max(ROI_groups.values()) + 1, max(ROI_groups.values()) + 1 + len(pairwise_groups), 1)))
-	
+	#contact groups and ROI groups
+	if (contacts_bool == True and len(organelles_selected) >= 2):
+		contact_combos = []
+		for n in range(2, len(organelles_selected)+1, 1):
+			contact_combos = contact_combos + list(combinations(organelles_selected, n))
+		print(contact_combos)
+		contact_groups_keys = []
+		for g in contact_combos:
+			print(g)
+			contact_groups_keys.append(''.join([organelles_short.get(key) for key in g]))
+		print(contact_groups_keys)
+		contact_groups = dict(zip(contact_groups_keys, contact_combos))#
+		
+		contact_ROI_groups = dict(zip(contact_groups.keys(), range(max(ROI_groups.values()) + 1, max(ROI_groups.values()) + 1 + len(contact_groups), 1)))	
+
+
 #-----
 
 filenames_filtered = [f for f in filenames if re.search(ext + "$", f)]#filter to files with the correct extension
@@ -171,14 +168,15 @@ for c in conditions:
 		IJ.run(org_img, "Convert to Mask", "")
 		images_to_stack.append(org_img)
 		
-	#PAIRWISE OVERLAPS
-	for combo in pairwise_groups.keys():
-		if set(pairwise_groups[combo]).issubset(organelles_selected):
-			img1 = imp_key[pairwise_groups[combo][0]]
-			img2 = imp_key[pairwise_groups[combo][1]]
-			img3 = ImageCalculator.run(img1, img2, "AND create")
-			img3.setTitle(combo)
-			images_to_stack.append(img3)
+	#ORGANELLE OVERLAPS
+	for combo in contact_groups.keys():
+		combo_res = imp_key[contact_groups[combo][0]]
+		combo_i = 1
+		while(combo_i < len(contact_groups[combo])):
+			combo_res = ImageCalculator.run(combo_res, imp_key[contact_groups[combo][combo_i]], "AND create")
+			combo_i += 1
+		combo_res.setTitle(combo)
+		images_to_stack.append(combo_res)
 	
 	#STACK
 	orgstack = I2S.run(images_to_stack)
@@ -259,14 +257,14 @@ for c in conditions:
 					rm.rename(i, cell_id + "_" + org + "_" + str(i - roi_start + 1))
 			org_img.close()#TODO - move below?
 		combo_present = []
-		for combo in pairwise_groups.keys():
-			if set(pairwise_groups[combo]).issubset(organelles_selected):
+		for combo in contact_groups.keys():
+			if set(contact_groups[combo]).issubset(organelles_selected):
 				combo_present.append(combo)
-				Roi.setDefaultGroup(pairwise_ROI_groups[combo])
+				Roi.setDefaultGroup(contact_ROI_groups[combo])
 				combo_img = crop_key[combo]
 				IJ.run(combo_img, "Analyze Particles...", "size=0-Infinity add composite")
 				rm.deselect()
-				rm.selectGroup(pairwise_ROI_groups[combo])
+				rm.selectGroup(contact_ROI_groups[combo])
 				combo_roi_start = rm.getSelectedIndex()
 				combo_roi_count = rm.selected()
 				if combo_roi_count > 0:
@@ -290,7 +288,7 @@ for c in conditions:
 		rm.runCommand(cell_img, "Measure")#TODO - limit slices?
 		results = ResultsTable.getResultsTable()
 		#add groups for processing in R
-		full_ROI_groups = dict(ROI_groups, **pairwise_ROI_groups)#combine
+		full_ROI_groups = dict(ROI_groups, **contact_ROI_groups)#combine
 		groups_to_type = {v:k for k, v in full_ROI_groups.items()}
 		for i in range(0, results.size(), 1):
 			results.setValue("Type", i, groups_to_type[int(results.getValue("Group", i))])
@@ -301,8 +299,8 @@ for c in conditions:
 		#POOLED ROI ANALYSIS
 		all_ROI_groups = ROI_groups#includes only selected organelles
 		for combo in combo_present:#from section above - checks whether both organelles in pair are selected
-			all_ROI_groups[combo] = pairwise_ROI_groups[combo]	
-		for r in all_ROI_groups.keys():#includes pairwise overlap groups
+			all_ROI_groups[combo] = contact_ROI_groups[combo]	
+		for r in all_ROI_groups.keys():#includes contact groups
 			Roi.setDefaultGroup(all_ROI_groups[r])
 			rm.selectGroup(all_ROI_groups[r])
 			r_nselected = len(rm.getSelectedIndexes())
@@ -333,7 +331,7 @@ for c in conditions:
 		rm.deselect()
 		rm.runCommand(cell_img, "Measure")
 		#add groups for processing in R - copied from above
-		full_ROI_groups = dict(ROI_groups, **pairwise_ROI_groups)#combine
+		full_ROI_groups = dict(ROI_groups, **contact_ROI_groups)#combine
 		groups_to_type = {v:k for k, v in full_ROI_groups.items()}
 		for i in range(0, results.size(), 1):
 			results.setValue("Type", i, groups_to_type[int(results.getValue("Group", i))])
@@ -353,15 +351,15 @@ for c in conditions:
 		org_slicenames = dict((k, slicenames[k]) for k in organelles_selected)
 		combo_slicenames = dict((k, slicenames.get(k)) for k in combo_present)
 		cell_crop_mainorg = SM.makeSubstack(cell_crop, ','.join([str(i) for i in org_slicenames.values()]))
-		cell_crop_pairwise = SM.makeSubstack(cell_crop, ','.join([str(i) for i in combo_slicenames.values()]))
+		cell_crop_contact = SM.makeSubstack(cell_crop, ','.join([str(i) for i in combo_slicenames.values()]))
 		mainorg_max = ZProjector.run(cell_crop_mainorg, "max")
 		mainorg_max.setTitle("organelles")
-		pairwise_max = ZProjector.run(cell_crop_pairwise, "max")
-		pairwise_max.setTitle("pairwise_contact_sites")
+		contact_max = ZProjector.run(cell_crop_contact, "max")
+		contact_max.setTitle("contact_sites")
 		PA.setSummaryTable(results)
 		IJ.run(mainorg_max, "Analyze Particles...", "size=0-Infinity summarize composite")
 		PA.setSummaryTable(results)
-		IJ.run(pairwise_max, "Analyze Particles...", "size=0-Infinity summarize composite")
+		IJ.run(contact_max, "Analyze Particles...", "size=0-Infinity summarize composite")
 		results.save(datadir + "/analysis/" + c + "_" + cell_id + "_summary_results.csv")
 		
 		
