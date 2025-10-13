@@ -8,21 +8,21 @@ from ij.plugin.filter import ParticleAnalyzer
 import os
 import re
 
-organelles = ['nuclei', 'Golgi', 'peroxisomes', 'ER', 'mitochondria', 'lysosomes', 'bacteria']
-#TODO - replace 'bacteria' with configurable 'other'
+organelles = ['nuclei', 'Golgi', 'peroxisomes', 'ER', 'mitochondria', 'lysosomes', 'other']
 
 #***USER DEFAULTS***
 #change these values to set your default cell/organelle suffixes
-default_cells = "_Max_Z_Project_cp_masks"
+default_cells = "_composite_seg_mask"
 default_org = dict()
 default_org["nuclei"] = "_Max_Z_Project_cp_nuclei"
-default_org["Golgi"] = "-subc_Golgi_v13_nucleus_&_perox_subtraction"
-default_org["peroxisomes"] = "-subc_Peroxisomes_v4"
-default_org["ER"] = "-subc_ER_Tom_Allen"
-default_org["mitochondria"] = "-subc_Mitochondria_v4"
+default_org["Golgi"] = "-_golgi"
+default_org["peroxisomes"] = "-_perox"
+default_org["ER"] = "-_ER"
+default_org["mitochondria"] = "-_mito"
 default_org["lysosomes"] = "-subc_Lysosomes_v4"
-default_org["bacteria"] = "-Best_1dpi_Ot_LD"
-default_checkboxes = [True, True, True, True, True, True, False]#in same organelle order as above (cell boundaries are mandatory)
+default_org["other"] = "-Ot_LD"
+default_checkboxes = [False, True, True, True, True, False, True]#in same organelle order as above (cell boundaries are mandatory)
+other_name = "TESTNAME"
 #*********************
 
 
@@ -55,6 +55,7 @@ for i in range(0, len(organelles), 1):
 	options.addToSameRow()
 	options.addStringField('', default_org[o])
 options.addMessage("\n\n")
+options.addStringField("Other organelle", other_name)
 options.addCheckbox("Calculate pairwise overlaps?", True)
 options.showDialog()
 
@@ -69,6 +70,7 @@ if options.wasOKed():#is this necessary?
 	for o in organelles:
 		org_bool[o] = options.getNextBoolean()
 		org_regex[o] = options.getNextString()
+	other_name = options.getNextString()
 	contacts_bool = options.getNextBoolean()
 	
 	org_regex = {k:v for (k,v), b in zip(org_regex.items(), list(org_bool.values())) if b == True}
@@ -76,6 +78,11 @@ if options.wasOKed():#is this necessary?
 	for o in organelles:
 		if org_bool[o] == True:
 			organelles_selected.append(o)
+			
+	if org_bool["other"] == True:#TODO - make this a bit neater
+		org_regex[other_name] = org_regex["other"]
+		del org_regex["other"]
+		organelles_selected = [other_name if o == "other" else o for o in organelles_selected]#replace with custom organelle name
 	
 	#ROI groups
 	ROI_groups = dict(zip(organelles_selected, list(range(2, len(organelles_selected) + 2, 1))))
@@ -123,6 +130,7 @@ for f in filenames_filtered:
 		filenames_key[g].append(f)
 	else:
 		filenames_key[g] = [f]
+print(conditions)
 
 
 #set up ROI manager
@@ -143,6 +151,7 @@ for c in conditions:
 	c_cell_image = str()
 	imp_key = {}
 	for cf in c_filenames:
+		print(cf)
 		imp = IJ.openImage(os.path.join(datadir, cf))#IJ.getImage()
 		try:
 			organelle = [k for k,v in org_regex.items() if v in cf][0]
@@ -156,6 +165,7 @@ for c in conditions:
 	images_to_stack = []
 	#ORGANELLE THRESHOLDING
 	for org in organelles_selected:
+		print(org)
 		org_img = imp_key[org]
 		IJ.setRawThreshold(org_img, 1, (2**org_img.getBitDepth())-1)#will work for 8 or 16-bit; might break on 32-bit or RGB
 		IJ.run(org_img, "Convert to Mask", "")
