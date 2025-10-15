@@ -63,28 +63,29 @@ names(summary_measurements) <- condcells
 
 *Organelle set*
 ```{r organelles}
+#TODO - generate from slices
 organelles <- unique(unlist(lapply(condcells, function(c){ pooled_measurements[[c]]@other$Type })))
-pairwise <- list("ng" = c("nuclei", "Golgi"),
+pairwise <- list("ng" = c("nuclei", "Golgi"),#is this used anywhere?
 "np" = c("nuclei", "peroxisomes"),
 "ne" = c("nuclei", "ER"),
 "nm" = c("nuclei", "mitochondria"),
 "nl" = c("nuclei", "lysosomes"),
-"nb" = c("nuclei", "bacteria"),
+"no" = c("nuclei", "other"),
 "gp" = c("Golgi", "peroxisomes"),
 "ge" = c("Golgi", "ER"),
 "gm" = c("Golgi", "mitochondria"),
 "gl" = c("Golgi", "lysosomes"),
-"gb" = c("Golgi", "bacteria"),
+"go" = c("Golgi", "other"),
 "pe" = c("peroxisomes", "ER"),
 "pm" = c("peroxisomes", "mitochondria"),
 "pl" = c("peroxisomes", "lysosomes"),
-"pb" = c("peroxisomes", "bacteria"),
+"po" = c("peroxisomes", "other"),
 "em" = c("ER", "mitochondria"),
 "el" = c("ER", "lysosomes"),
-"eb" = c("ER", "bacteria"),
+"eo" = c("ER", "other"),
 "ml" = c("mitochondria", "lysosomes"),
-"mb" = c("mitochondria", "bacteria"),
-"lb" = c("lysosomes", "bacteria"))
+"mo" = c("mitochondria", "other"),
+"lo" = c("lysosomes", "other"))
 ```
 
 
