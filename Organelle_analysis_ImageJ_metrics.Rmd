@@ -112,12 +112,12 @@ for(org in c(organelles, names(pairwise))){
   metrics[paste0(org, "_area_norm_cell")] <- metrics[paste0(org, "_area")]/metrics$cell_area
   metrics[paste0(org, "_count")] <- sapply(condcells, function(c){ other = individual_measurements[[c]]@other;#FROM INDIVIDUALS DF
                                                           nrow(other[other$Type == org,]) })
-  if(org %in% names(pairwise)){
-    metrics[paste0(org, "_size_avg")] <- sapply(condcells, function(c){ other = individual_measurements[[c]]@other;#FROM INDIVIDUALS DF
-                                                          mean(other[other$Type == org,]$Area) })
-    metrics[paste0(org, "_size_sd")] <- sapply(condcells, function(c){ other = individual_measurements[[c]]@other;#FROM INDIVIDUALS DF
+  
+  metrics[paste0(org, "_size_avg")] <- sapply(condcells, function(c){ other = individual_measurements[[c]]@other;#FROM INDIVIDUALS DF
+                                                        mean(other[other$Type == org,]$Area) })
+  metrics[paste0(org, "_size_sd")] <- sapply(condcells, function(c){ other = individual_measurements[[c]]@other;#FROM INDIVIDUALS DF
                                                           sd(other[other$Type == org,]$Area) })
-  }
+  
 }
 
 metrics$total_organelle_area <- sapply(condcells, function(c){df <- summary_measurements[[c]]@data; df[df$Slice == 'organelles','Total.Area'][1]})
