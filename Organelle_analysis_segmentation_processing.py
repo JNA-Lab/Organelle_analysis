@@ -1,8 +1,8 @@
 from ij import ImagePlus, IJ
-from ij.gui import GenericDialog, Roi
+from ij.gui import GenericDialog, NonBlockingGenericDialog, Roi
 from ij.io import DirectoryChooser
 from ij.measure import ResultsTable
-from ij.plugin import ImageCalculator, ImagesToStack, SubstackMaker, ZProjector, HyperStackConverter
+from ij.plugin import Duplicator, ImageCalculator, ImagesToStack, SubstackMaker, ZProjector, HyperStackConverter
 from ij.plugin.frame import RoiManager
 from ij.plugin.filter import ParticleAnalyzer
 import os
@@ -24,8 +24,8 @@ default_org["ER"] = "-_ER"
 default_org["mitochondria"] = "-_mito"
 default_org["lysosomes"] = "-subc_Lysosomes_v4"
 default_org["other"] = "-Ot_LD"
-default_checkboxes = [False, True, True, True, True, False, True]#in same organelle order as above (cell boundaries are mandatory)
-other_name = "TESTNAME"
+default_checkboxes = [False, True, True, True, True, True, False]#in same organelle order as above (cell boundaries are mandatory)
+other_name = "Other"
 #*********************
 
 
@@ -45,7 +45,8 @@ if not os.path.exists(datadir + "/analysis/"):
 	os.mkdir(datadir + "/analysis/")
 
 
-#get processing options
+#get processing options
+
 options = GenericDialog('Options')
 options.addChoice('File extension', list(f_ext), "tif")
 options.addMessage("Select which organelles to analyse,and how they \nare represented in file names.");
@@ -61,6 +62,7 @@ options.addMessage("\n\n")
 options.addStringField("Other organelle", other_name)
 options.addMessage("\n\n")
 options.addCheckbox("Calculate pixel overlaps?", True)
+options.addCheckbox("Delete organelles inside nucleus mask?", True)
 options.showDialog()
 
 if options.wasOKed():#is this necessary?
@@ -76,6 +78,7 @@ if options.wasOKed():#is this necessary?
 		org_regex[o] = options.getNextString()
 	other_name = options.getNextString()
 	contacts_bool = options.getNextBoolean()
+	nuclei_bool = options.getNextBoolean()
 	
 	org_regex = {k:v for (k,v), b in zip(org_regex.items(), list(org_bool.values())) if b == True}
 	organelles_selected = []
@@ -118,26 +121,27 @@ filenames_filtered = [f for f in filenames if re.search(ext + "$", f)]#filter to
 conditions = set()
 filenames_key = dict()
 for f in filenames_filtered:
-	g = f.replace("." + ext, "")
+	g = f #previously g = f.replace("." + ext, "")
 	for o in org_regex.values():
-		g = g.replace(o, "")#not actually regex matching - probably best for now
-	g = g.replace(cell_regex, "")
-	conditions.add(g)
+		g = g.replace(o + "." + ext, "")#not actually regex matching - probably best for now
+	g = g.replace(cell_regex + "." + ext, "")
+	if not g.endswith("." + ext):#trying to exclude file names that didn't match any of the cell/organelle values
+		conditions.add(g)
 	if g in filenames_key.keys():
 		filenames_key[g].append(f)
 	else:
 		filenames_key[g] = [f]
-print(conditions)
 
 
 #set up ROI manager
-RM = RoiManager(False)#don't display
+RM = RoiManager(False)
+#don't display
 rm = RM.getRoiManager()
 rm.hide()
 I2S = ImagesToStack()
 SM = SubstackMaker()
 PA = ParticleAnalyzer()
-
+D = Duplicator()
 ##MAIN LOOP
 progress = 0
 for c in conditions:
@@ -148,7 +152,6 @@ for c in conditions:
 	c_cell_image = str()
 	imp_key = {}
 	for cf in c_filenames:
-		print(cf)
 		imp = IJ.openImage(os.path.join(datadir, cf))#IJ.getImage()
 		try:
 			organelle = [k for k,v in org_regex.items() if v in cf][0]
@@ -162,7 +165,6 @@ for c in conditions:
 	images_to_stack = []
 	#ORGANELLE THRESHOLDING
 	for org in organelles_selected:
-		print(org)
 		org_img = imp_key[org]
 		IJ.setRawThreshold(org_img, 1, (2**org_img.getBitDepth())-1)#will work for 8 or 16-bit; might break on 32-bit or RGB
 		IJ.run(org_img, "Convert to Mask", "")
@@ -218,18 +220,38 @@ for c in conditions:
 		rm.rename(0, cell_id)#renaming for image-wide list
 		cells_ROIs_orig[cell_id] = rm.getRoi(0)
 		#duplicate stack and clear outside ROI
-		rm.select(0)#probably redundant
+		rm.select(0)
+
+#probably redundant
 		cell_crop = orgstack.crop([rm.getRoi(0)], "stack")[0]
 		cell_crop.setTitle(cell_id)
 		rm.addRoi(cell_crop.getRoi())#cell boundary in cropped image
 		rm.select(0)
 		rm.runCommand("Delete")#deleting original cell boundary - now in wrong place in cropped image
 		rm.rename(0, cell_id)
-		rm.select(cell_crop, 0)		
+		rm.select(cell_crop, 0)
+		#removing all pixels outside cell mask for cell_crop stack
 		IJ.run(cell_crop, "Clear Outside", "stack")
 		cell_crop_mask = cell_crop.createRoiMask()
-		cell_crop.getImageStack().addSlice('cell', cell_crop_mask)
-		
+		cell_crop.getImageStack().addSlice('cell', cell_crop_mask)#adding cell mask to stack
+		if(nuclei_bool == True):
+			cell_crop_slice_order = cell_crop.getImageStack().getSliceLabels()
+			nuclei_index = cell_crop_slice_order.index('nuclei') + 1 #(slices 1-indexed)
+			#subtract nuclei, re-add nuclei after current index, delete current nuclei slice
+			nuclei_slice = D.run(cell_crop, nuclei_index, nuclei_index)
+			cell_crop.getImageStack().deleteSlice(nuclei_index)
+			cell_crop = ImageCalculator.run(cell_crop, nuclei_slice, "subtract create stack")			
+			cell_crop.getImageStack().addSlice('nuclei', nuclei_slice.getProcessor())
+			#remove nucleus from cell ROI for measurements:
+			cell_crop_slice_order = cell_crop.getImageStack().getSliceLabels()#recalculate for updated version
+			#TODO - separate cytoplasm slice; keep cell mask with nucleus
+			cell_mask_index = cell_crop_slice_order.index('cell') + 1
+			cell_crop.setSlice(cell_mask_index)
+			IJ.run(cell_crop, "Create Selection", "");
+			rm.addRoi(cell_crop.getRoi())
+			rm.select(0)
+			rm.runCommand("Delete")#deleting original cell boundary - nucleus included
+			rm.rename(0, cell_id)		
 		#analyse particles per organelle/pair
 		#manual implementation of SE.convertStackToImages for background running:
 		cell_crop_slices = cell_crop.getStackSize()
@@ -274,7 +296,8 @@ for c in conditions:
 				
 		#save cropped stack
 		cell_crop_copy = cell_crop.duplicate()
-		HyperStackConverter.toHyperStack(cell_crop_copy, len(images_to_stack) + 1, 1, 1)#+1 for added cell mask
+		HyperStackConverter.toHyperStack(cell_crop_copy, len(images_to_stack) + 1, 1, 1)
+#+1 for added cell mask
 		IJ.saveAs(cell_crop_copy, "Tiff", datadir + "/analysis/" + c + "_" + cell_id + "_stack.tif")
 		
 		#save ROIs
@@ -343,7 +366,8 @@ for c in conditions:
 		
 						
 		#max intensity stacks for total area covered
-		results.reset()#?
+		results.reset()
+#?
 		_, _, _, nSlices, _ = cell_crop.getDimensions()
 		slicenames = dict()
 		for i in range(1, nSlices + 1, 1):
@@ -361,7 +385,8 @@ for c in conditions:
 		PA.setSummaryTable(results)
 		IJ.run(contact_max, "Analyze Particles...", "size=0-Infinity summarize composite")
 		results.save(datadir + "/analysis/" + c + "_" + cell_id + "_summary_results.csv")
-		
+		
+
 		
 		#move ROIs to original cell position and save to persistent dict
 		for i in range(0, rm.getCount(), 1):
@@ -415,6 +440,7 @@ for c in conditions:
 	results.reset()
 	
 rm.close()
-IJ.selectWindow("Results")#can't select when not displayed
+IJ.selectWindow("Results")
+#can't select when not displayed
 IJ.run("Close")
 
