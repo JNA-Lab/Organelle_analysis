@@ -43,9 +43,19 @@ names(pooled_measurements) <- condcells
 
 Reading in TIF stacks for each cell and creating pixel tables
 ```{r}
-slicenames <- read.csv(paste0(dir, '\\', condcells[1], '_slice_labels.csv'), header = FALSE)[,2]#running ONCE - should be consistent across batch
+slicenames.df <- read.csv(paste0(dir, '\\', condcells[1], '_slice_labels.csv'), header = FALSE)#running ONCE - should be consistent across batch
+slicenames <- slicenames.df[,2]
 #TODO - 'core organelles' specified in CSV - hardcoding for now to test
-organelles <- c('Golgi', 'peroxisomes', 'ER', 'mitochondria', 'lyosomes')
+organelles <- slicenames.df[slicenames.df$V3!='',2]
+contacts <- slicenames.df[slicenames.df$V3=='',2]
+contacts <- contacts[which(contacts != 'cell')]
+contacts.components <- lapply(contacts, function(c){
+  o <- strsplit(c, '')[[1]]
+  org <- slicenames.df[slicenames.df$V3 %in% o, 2]
+  return(org)
+})
+names(contacts.components) <- contacts
+
 
 cells.rasters <- lapply(condcells, function(c){ 
   r <- rast(paste0(dir, '\\', c, '_stack.tif'))
@@ -152,6 +162,10 @@ for(name in names(cells.pixels)){
   # cell$grid_to_PM
   # cell$grid_norm
   
+  #normalisation values for contact sites (total organelle areas)
+  
+  
+  
   cells.pixels[[name]] <- cell
 }
 
@@ -185,6 +199,19 @@ for(o in slicenames){
       CoA <- tally/nrow(df.org)
       return(CoA)
     })
+}
+```
+
+Contact site normalisation
+```{r}
+norm_values <- data.frame(
+  organelles = contacts,
+  area = 0
+)
+for(o in contacts){#NOT WORKING
+  #pixel counts for normalising contact areas
+  pix <- nrow(cell.pixels %>% filter(across(any_of(organelles), function(v) v > 0)))
+  norm_values[which(norm_values$organelles == o), 'area'] <- pix
 }
 ```
 

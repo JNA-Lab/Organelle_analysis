@@ -63,7 +63,7 @@ names(summary_measurements) <- condcells
 
 *Organelle set*
 ```{r organelles}
-#TODO - generate from slices
+#TODO - generate from slice names?
 organelles <- unique(unlist(lapply(condcells, function(c){ pooled_measurements[[c]]@other$Type })))
 pairwise <- list("ng" = c("nuclei", "Golgi"),#is this used anywhere?
 "np" = c("nuclei", "peroxisomes"),

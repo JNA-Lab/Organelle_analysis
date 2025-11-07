@@ -42,7 +42,19 @@ names(pooled_measurements) <- condcells
 
 Constants and functions
 ```{r}
-slicenames <- read.csv(paste0(dir, '\\', condcells[1], '_slice_labels.csv'), header = FALSE)[,2]#running ONCE - should be consistent across batch
+slicenames.df <- read.csv(paste0(dir, '\\', condcells[1], '_slice_labels.csv'), header = FALSE)#running ONCE - should be consistent across batch
+slicenames <- slicenames.df[,2]
+#TODO - 'core organelles' specified in CSV - hardcoding for now to test
+organelles <- slicenames.df[slicenames.df$V3!='',2]
+contacts <- slicenames.df[slicenames.df$V3=='',2]
+contacts <- contacts[which(contacts != 'cell')]
+contacts.components <- lapply(contacts, function(c){
+  o <- strsplit(c, '')[[1]]
+  org <- slicenames.df[slicenames.df$V3 %in% o, 2]
+  return(org)
+})
+names(contacts.components) <- contacts
+
 
 px_round <- function(x,y){
   xr <- round(x, digits = 0)
@@ -58,6 +70,11 @@ adv_metrics <- data.frame(
   condcell = condcells
 )
 
+norm_values <- data.frame(
+  organelles = contacts,
+  area = 0
+)
+
 cent_type <- ifelse('nuclei' %in% slicenames, 'nuclei', 'cells')
 
 binangle = 5 #degree width of bins for asymmetry coefficient - MUST SPLIT 360 INTO EVEN NUMBER OF GROUPS - e.g. 7 or 8 won't work
@@ -67,7 +84,7 @@ if((360/binangle) %% 2 != 0){ warning("Binangle must divide 360 into an even num
 ```{r}
 
 for(c in condcells){
-  print(pate0('Processing condition ', c))
+  print(paste0('Processing condition ', c))
   cell.raster <- rast(paste0(dir, '\\', c, '_stack.tif'))
   names(cell.raster) <- slicenames
   crs(cell.raster) <- 'local' #IMPORTANT - treat as planar coordinates instead of lon/lat
@@ -115,6 +132,13 @@ for(c in condcells){
     }
     CoA <- tally/nrow(df.org)
     adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_CoA')] <- CoA
+    
+    if (o %in% contacts){#NOT WORKING YET
+      #pixel counts for normalising contact areas
+      pix <- nrow(cell.pixels %>% filter(across(organelles, function(v) v > 0)))
+      norm_values[o, 'area'] <- pix
+    }
+    
   }
   
   remove(cell.raster)

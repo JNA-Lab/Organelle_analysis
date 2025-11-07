@@ -15,16 +15,16 @@ organelles_short = {'nuclei':'n', 'Golgi':'g', 'peroxisomes':'p', 'ER':'e', 'mit
 
 #***USER DEFAULTS***
 #change these values to set your default cell/organelle suffixes
-default_cells = "_composite_seg_mask"
+default_cells = "_Max_Z_Project_cp_masks"
 default_org = dict()
 default_org["nuclei"] = "_Max_Z_Project_cp_nuclei"
-default_org["Golgi"] = "-_golgi"
-default_org["peroxisomes"] = "-_perox"
-default_org["ER"] = "-_ER"
-default_org["mitochondria"] = "-_mito"
+default_org["Golgi"] = "-subc_Golgi_v13_nucleus_&_perox_subtraction"
+default_org["peroxisomes"] = "-subc_Peroxisomes_v4"
+default_org["ER"] = "-subc_ER_Tom_Allen"
+default_org["mitochondria"] = "-subc_Mitochondria_v4"
 default_org["lysosomes"] = "-subc_Lysosomes_v4"
 default_org["other"] = "-Ot_LD"
-default_checkboxes = [False, True, True, True, True, True, False]#in same organelle order as above (cell boundaries are mandatory)
+default_checkboxes = [True, True, True, True, True, True, False]#in same organelle order as above (cell boundaries are mandatory)
 other_name = "Other"
 #*********************
 
@@ -397,10 +397,10 @@ for c in conditions:
 		results.reset()
 		
 		
-		#save stack labels for interpreting tiff stacks in R
+		#save stack labels and short codes for interpreting data in R
 		with open(datadir + "analysis\\" + c + "_" + cell_id + "_slice_labels.csv", "w") as f:#different path format than ImageJ
 			for i in range(1, len(slicenames) + 1, 1):
-				f.write(str(i) + "," + slicenames.keys()[list(slicenames.values()).index(i)] + "\n")
+				f.write(str(i) + "," + slicenames.keys()[list(slicenames.values()).index(i)] + "," + organelles_short.get(slicenames.keys()[list(slicenames.values()).index(i)], "") + "\n")
 		#TODO - move combo_present and this outside of loop - should be the same for all cells and conditions in a batch
 		
 	IJ.showProgress(progress/len(conditions))
