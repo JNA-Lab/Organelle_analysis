@@ -282,7 +282,7 @@ for c in conditions:
 		rm.save(datadir + "/analysis/" + c + "_" + cell_id + "_ROIs.zip")
 		
 		#measure
-		IJ.run("Set Measurements...", "area mean min centroid center shape feret's skewness kurtosis display redirect=None decimal=3")
+		IJ.run("Set Measurements...", "area mean min centroid center shape feret's display redirect=None decimal=3")
 		rm.deselect()
 		rm.runCommand("Select All")#should be redundant
 		rm.runCommand(cell_img, "Measure")#TODO - limit slices?
@@ -326,7 +326,7 @@ for c in conditions:
 		
 		#MEASUREMENTS
 		results.reset()#might need to close for next line to work properly
-		IJ.run("Set Measurements...", "area centroid center shape feret's skewness kurtosis display redirect=None decimal=3")
+		IJ.run("Set Measurements...", "area centroid center shape feret's display redirect=None decimal=3")
 		rm.runCommand("Select All")#should be redundant
 		rm.deselect()
 		rm.runCommand(cell_img, "Measure")
