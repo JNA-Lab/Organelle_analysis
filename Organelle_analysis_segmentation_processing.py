@@ -233,7 +233,6 @@ for c in conditions:
 		#removing all pixels outside cell mask for cell_crop stack
 		IJ.run(cell_crop, "Clear Outside", "stack")
 		cell_crop_mask = cell_crop.createRoiMask()
-		cell_crop.getImageStack().addSlice('cell', cell_crop_mask)#adding cell mask to stack
 		if(nuclei_bool == True):
 			cell_crop_slice_order = cell_crop.getImageStack().getSliceLabels()
 			nuclei_index = cell_crop_slice_order.index('nuclei') + 1 #(slices 1-indexed)
@@ -242,16 +241,8 @@ for c in conditions:
 			cell_crop.getImageStack().deleteSlice(nuclei_index)
 			cell_crop = ImageCalculator.run(cell_crop, nuclei_slice, "subtract create stack")			
 			cell_crop.getImageStack().addSlice('nuclei', nuclei_slice.getProcessor())
-			#remove nucleus from cell ROI for measurements:
-			cell_crop_slice_order = cell_crop.getImageStack().getSliceLabels()#recalculate for updated version
-			#TODO - separate cytoplasm slice; keep cell mask with nucleus
-			cell_mask_index = cell_crop_slice_order.index('cell') + 1
-			cell_crop.setSlice(cell_mask_index)
-			IJ.run(cell_crop, "Create Selection", "");
-			rm.addRoi(cell_crop.getRoi())
-			rm.select(0)
-			rm.runCommand("Delete")#deleting original cell boundary - nucleus included
-			rm.rename(0, cell_id)		
+			#NOT removing nucleus from cell ROI - calculate cytoplasm area separately
+		cell_crop.getImageStack().addSlice('cell', cell_crop_mask)#adding cell mask to stack
 		#analyse particles per organelle/pair
 		#manual implementation of SE.convertStackToImages for background running:
 		cell_crop_slices = cell_crop.getStackSize()
