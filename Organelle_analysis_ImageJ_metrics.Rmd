@@ -118,6 +118,10 @@ for(org in c(organelles, names(pairwise))){
   metrics[paste0(org, "_size_sd")] <- sapply(condcells, function(c){ other = individual_measurements[[c]]@other;#FROM INDIVIDUALS DF
                                                           sd(other[other$Type == org,]$Area) })
   
+  metrics[paste0(org, "_circ_avg")] <- sapply(condcells, function(c){ other = individual_measurements[[c]]@other;#FROM INDIVIDUALS DF
+                                                        mean(other[other$Type == org,]$Circ.) })
+  metrics[paste0(org, "_circ_sd")] <- sapply(condcells, function(c){ other = individual_measurements[[c]]@other;#FROM INDIVIDUALS DF
+                                                          sd(other[other$Type == org,]$Circ.) })
 }
 
 metrics$total_organelle_area <- sapply(condcells, function(c){df <- summary_measurements[[c]]@data; df[df$Slice == 'organelles','Total.Area'][1]})
