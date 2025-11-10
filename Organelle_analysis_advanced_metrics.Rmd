@@ -125,15 +125,19 @@ cells.cent.pixels <- do.call(rbind, lapply(1:nrow(cells.cent), function(i){#not 
 ```{r}
 #efficiency - filter down to pixels inside cell boundary
 for(name in names(cells.pixels)){
-  cells.pixels[[name]] <- cells.pixels[[name]] %>% filter(cell > 0)
+  cells.pixels[[name]] <- cells.pixels[[name]] %>% filter(cell != 0|is.na(cell))#prev. >0
 }
 
 binangle = 5 #degree width of bins for asymmetry coefficient - MUST SPLIT 360 INTO EVEN NUMBER OF GROUPS - e.g. 7 or 8 won't work
 if((360/binangle) %% 2 != 0){ warning("Binangle must divide 360 into an even number of groups for the following code to work.") }
+
+norm_values <- data.frame(
+  organelles = contacts
+)
 ```
 
 ```{r}
-#-----calculate MDR-----
+#-----calculate angles and distances for MDR/CoA/etc.-----
 for(name in names(cells.pixels)){
   cell <- cells.pixels[[name]]
   #distance to nucleus/PM and standard MDR
@@ -163,8 +167,12 @@ for(name in names(cells.pixels)){
   # cell$grid_norm
   
   #normalisation values for contact sites (total organelle areas)
-  
-  
+  for(o in contacts){#NOT WORKING - LOOP CELLS
+  #pixel counts for normalising contact areas
+    o.components <- contacts.components[[o]]
+    pix <- nrow(cell.pixels %>% filter(if_any(matches(o.components), ~.>0)))
+    norm_values[norm_values$organelles == o, name] <- pix
+}
   
   cells.pixels[[name]] <- cell
 }
@@ -204,15 +212,8 @@ for(o in slicenames){
 
 Contact site normalisation
 ```{r}
-norm_values <- data.frame(
-  organelles = contacts,
-  area = 0
-)
-for(o in contacts){#NOT WORKING
-  #pixel counts for normalising contact areas
-  pix <- nrow(cell.pixels %>% filter(across(any_of(organelles), function(v) v > 0)))
-  norm_values[which(norm_values$organelles == o), 'area'] <- pix
-}
+
+
 ```
 
 

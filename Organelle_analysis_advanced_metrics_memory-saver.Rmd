@@ -44,7 +44,6 @@ Constants and functions
 ```{r}
 slicenames.df <- read.csv(paste0(dir, '\\', condcells[1], '_slice_labels.csv'), header = FALSE)#running ONCE - should be consistent across batch
 slicenames <- slicenames.df[,2]
-#TODO - 'core organelles' specified in CSV - hardcoding for now to test
 organelles <- slicenames.df[slicenames.df$V3!='',2]
 contacts <- slicenames.df[slicenames.df$V3=='',2]
 contacts <- contacts[which(contacts != 'cell')]
@@ -71,8 +70,7 @@ adv_metrics <- data.frame(
 )
 
 norm_values <- data.frame(
-  organelles = contacts,
-  area = 0
+  organelles = contacts
 )
 
 cent_type <- ifelse('nuclei' %in% slicenames, 'nuclei', 'cells')
@@ -133,10 +131,11 @@ for(c in condcells){
     CoA <- tally/nrow(df.org)
     adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_CoA')] <- CoA
     
-    if (o %in% contacts){#NOT WORKING YET
+    if (o %in% contacts){
       #pixel counts for normalising contact areas
-      pix <- nrow(cell.pixels %>% filter(across(organelles, function(v) v > 0)))
-      norm_values[o, 'area'] <- pix
+      o.components <- contacts.components[[o]]
+      pix <- nrow(cell.pixels %>% filter(if_any(matches(o.components), ~.>0)))
+      norm_values[norm_values$organelles == o, c] <- pix
     }
     
   }
@@ -153,3 +152,12 @@ Combining with the other metrics
 ```{r}
 full_metrics <- dplyr::left_join(metrics, adv_metrics, by = join_by(condcell == condcell))
 ```
+
+Normalising contact areas to areas of involved organelles
+```{r}
+for(c in contacts){
+  full_metrics[paste0(c, '_area_norm')] <- 
+}
+```
+
+
