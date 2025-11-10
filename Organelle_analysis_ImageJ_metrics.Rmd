@@ -95,29 +95,18 @@ names(summary_measurements) <- condcells
 
 *Organelle set*
 ```{r organelles}
-#TODO - generate from slice names?
-organelles <- unique(unlist(lapply(condcells, function(c){ pooled_measurements[[c]]@other$Type })))
-pairwise <- list("ng" = c("nuclei", "Golgi"),#is this used anywhere? #TODO - change ASAP to accommodate higher order contacts
-"np" = c("nuclei", "peroxisomes"),
-"ne" = c("nuclei", "ER"),
-"nm" = c("nuclei", "mitochondria"),
-"nl" = c("nuclei", "lysosomes"),
-"no" = c("nuclei", "other"),
-"gp" = c("Golgi", "peroxisomes"),
-"ge" = c("Golgi", "ER"),
-"gm" = c("Golgi", "mitochondria"),
-"gl" = c("Golgi", "lysosomes"),
-"go" = c("Golgi", "other"),
-"pe" = c("peroxisomes", "ER"),
-"pm" = c("peroxisomes", "mitochondria"),
-"pl" = c("peroxisomes", "lysosomes"),
-"po" = c("peroxisomes", "other"),
-"em" = c("ER", "mitochondria"),
-"el" = c("ER", "lysosomes"),
-"eo" = c("ER", "other"),
-"ml" = c("mitochondria", "lysosomes"),
-"mo" = c("mitochondria", "other"),
-"lo" = c("lysosomes", "other"))
+#Copied from advanced metrics - remove when combining
+slicenames.df <- read.csv(paste0(dir, '\\', condcells[1], '_slice_labels.csv'), header = FALSE)#running ONCE - should be consistent across batch
+slicenames <- slicenames.df[,2]
+organelles <- slicenames.df[slicenames.df$V3!='',2]
+contacts <- slicenames.df[slicenames.df$V3=='',2]
+contacts <- contacts[which(contacts != 'cell')]
+contacts.components <- lapply(contacts, function(c){
+  o <- strsplit(c, '')[[1]]
+  org <- slicenames.df[slicenames.df$V3 %in% o, 2]
+  return(org)
+})
+names(contacts.components) <- contacts
 ```
 
 
@@ -134,7 +123,7 @@ for(param in names(up)){
 metrics$cell_area <- sapply(condcells, function(c){ pooled_measurements[[c]]@cells$Area })
 metrics$cell_circ <- sapply(condcells, function(c){ pooled_measurements[[c]]@cells$Circ. })
 
-for(org in c(organelles, names(pairwise))){#TODO ASAP - higher order
+for(org in c(organelles, contacts)){
   metrics[paste0(org, "_area")] <- sapply(condcells, function(c){ other = pooled_measurements[[c]]@other;
                                                           other[other$Type == org,]$Area[1] })#should only have one of each - MIGHT BREAK IF PAIRWISE MISSING - CHECK
   metrics[paste0(org, "_area_norm_cell")] <- metrics[paste0(org, "_area")]/metrics$cell_area

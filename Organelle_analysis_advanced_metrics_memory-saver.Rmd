@@ -70,7 +70,7 @@ adv_metrics <- data.frame(
 )
 
 norm_values <- data.frame(
-  organelles = contacts
+  condcell = condcells
 )
 
 cent_type <- ifelse('nuclei' %in% slicenames, 'nuclei', 'cells')
@@ -135,7 +135,7 @@ for(c in condcells){
       #pixel counts for normalising contact areas
       o.components <- contacts.components[[o]]
       pix <- nrow(cell.pixels %>% filter(if_any(matches(o.components), ~.>0)))
-      norm_values[norm_values$organelles == o, c] <- pix
+      norm_values[norm_values$condcell == c, o] <- pix
     }
     
   }
@@ -156,7 +156,10 @@ full_metrics <- dplyr::left_join(metrics, adv_metrics, by = join_by(condcell == 
 Normalising contact areas to areas of involved organelles
 ```{r}
 for(c in contacts){
-  full_metrics[paste0(c, '_area_norm')] <- 
+  # full_metrics[paste0(c, '_area_norm')] <- full_metrics[paste0(c, '_area')]/
+  full_metrics[paste0(c, '_area_norm')] <- sapply(full_metrics$condcell, function(cc){#MESSY - make this cleaner/check order is consistent
+    full_metrics[full_metrics$condcell == cc, paste0(c, '_area')]/norm_values[norm_values$condcell == cc, c]
+  })
 }
 ```
 
