@@ -170,7 +170,7 @@ for(name in names(cells.pixels)){
   for(o in contacts){#NOT WORKING - LOOP CELLS
   #pixel counts for normalising contact areas
     o.components <- contacts.components[[o]]
-    pix <- nrow(cell.pixels %>% filter(if_any(matches(o.components), ~.>0)))
+    pix <- nrow(cell.pixels %>% filter(if_any(any_of(o.components), ~.!=0)))
     norm_values[norm_values$organelles == o, name] <- pix
 }
   

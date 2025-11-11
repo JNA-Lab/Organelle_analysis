@@ -86,7 +86,7 @@ for(c in condcells){
   cell.raster <- rast(paste0(dir, '\\', c, '_stack.tif'))
   names(cell.raster) <- slicenames
   crs(cell.raster) <- 'local' #IMPORTANT - treat as planar coordinates instead of lon/lat
-  
+
   cell.pixels <- as.data.frame(cell.raster, xy = TRUE) %>% filter(cell >0)
   
   p <- pooled_measurements[[c]]@data
@@ -134,7 +134,7 @@ for(c in condcells){
     if (o %in% contacts){
       #pixel counts for normalising contact areas
       o.components <- contacts.components[[o]]
-      pix <- nrow(cell.pixels %>% filter(if_any(matches(o.components), ~.>0)))
+      pix <- nrow(cell.pixels %>% filter(if_any(any_of(o.components), ~.!=0)))
       norm_values[norm_values$condcell == c, o] <- pix
     }
     
