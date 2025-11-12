@@ -30,7 +30,9 @@ normalise_organelles_to <- 'cell'
 #TODO - move binangle here
 ```
 
+
 ## ImageJ import and metrics
+
 *R setup*
 ```{r imagej_setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -47,11 +49,11 @@ library(factoextra)
 #TODO - check these are all still used; move PCA-related to vis section
 ```
 
-Select file directory
 *Select ImageJ Macro output directory*
-_R VERSION BUG ON WINDOWS 10_ - WON'T OPEN SELECTION WINDOW UNTIL AFTER file.choose() HAS BEEN RUN
-https://stackoverflow.com/questions/77984544/choose-dir-function-does-not-work-in-r-v4-3-2
 ```{r data_location}
-dir <- choose.dir() #WINDOWS ONLY - TODO Mac support with tk option - https://stackoverflow.com/questions/48218491/os-independent-way-to-select-directory-interactively-in-r
-
+dir <- rstudioapi::selectDirectory(caption = "Select 'anaysis' folder from ImageJ macro")
+#TODO - note about running in Rstudio/from other tools - might need to change/specify directory
 ```
+
+
+
