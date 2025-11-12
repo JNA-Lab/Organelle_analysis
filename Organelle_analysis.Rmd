@@ -16,6 +16,8 @@ up['cell'] <- 3
 
 *normalise_organelles_to* - Which measurement to use to normalise organelle areas.  Options are 'cell', 'cytoplasm' (cell area - nucleus area), 'both', or 'none'. 'Cytoplasm' or 'both' will only work if nuclei were measured in the ImageJ analysis step, and nucleus will still be normalised to cell area unless 'none' is selected.  Organelle contacts are normalised to the cumulative area of the organelle types involved.
 
+*binangle* - The angle to use to split the cell into slices for calculating coefficient of asymmetry.  Must divide 360 into an even number of groups - e.g. 5, 6, or 10 is fine, but 7 or 8 won't work.
+
 ```{r user_params}
 up <- list()#leave this line as-is - this variable will be used to retrieve the values below
 up['cell_line'] <- 2
@@ -27,7 +29,8 @@ up['cell_number'] <- 10
 
 normalise_organelles_to <- 'cell'
 
-#TODO - move binangle here
+binangle = 5 #degree width of bins for asymmetry coefficient
+if((360/binangle) %% 2 != 0){ warning("Binangle must divide 360 into an even number of groups for the following code to work.") }
 ```
 
 
@@ -44,6 +47,7 @@ library(patchwork)
 library(corrr)
 library(ggcorrplot)
 library(factoextra)
+
 #additional packages specified directly in function calls:
 #rstudioapi
 #TODO - check these are all still used; move PCA-related to vis section
@@ -55,5 +59,236 @@ dir <- rstudioapi::selectDirectory(caption = "Select 'anaysis' folder from Image
 #TODO - note about running in Rstudio/from other tools - might need to change/specify directory
 ```
 
+*Identify conditions for matching and iterating over ROI/measurement files*
+```{r identify_conditions}
+files <- list.files(dir, pattern = ('\\.csv$|\\.zip$'), recursive = FALSE, include.dirs = FALSE)
+files <- files[-which(grepl('\\_ALL\\_CELL\\_ROIs\\.zip$|\\_ALL\\_ORGANELLE\\_ROIs\\.zip$', files))]
+condcells <- unique(gsub('_results.csv||_POOLED_results.csv||_POOLED_ROIs.zip||_ROIs.zip||_summary_results.csv||_slice_labels.csv', '', files))#updated for cell-by-cell processing
+```
 
+*Identify and process measurement files for each condition/cell*
+```{r process_measurements}
+setClass("Measurements", slots = c(data = "data.frame", cells = "data.frame", other = "data.frame"))
+
+#measurements cleaning/categories
+process_measurements <- function(dir, condition, file_pattern){
+  df <- read.csv(paste0(dir, '\\', condition, file_pattern))
+  df$ROI_name <- unlist(regmatches(df$Label, regexec("(?<=:).+(?=:)?", df$Label, perl = T)))
+  #TODO - this might break if trailing : missing - dependent on single/multi channel image - should be consistent with macro
+  df.cells = df[df$Type == 'cells',]
+  df.other = df[df$Type != 'cells',]
+  mes <- new("Measurements", data = df, cells = df.cells, other = df.other)
+  return(mes)
+}
+
+pooled_measurements <- lapply(condcells, function(c){process_measurements(dir, c, "_POOLED_results.csv")})
+names(pooled_measurements) <- condcells
+individual_measurements <- lapply(condcells, function(c){process_measurements(dir, c, "_results.csv")})
+names(individual_measurements) <- condcells
+summary_measurements <- lapply(condcells, function(c){process_measurements(dir, c, "_summary_results.csv")})
+names(summary_measurements) <- condcells
+```
+
+*Identify set of organelles and types of contacts*
+```{r organelles_and_contacts}
+#Copied from advanced metrics - remove when combining
+slicenames.df <- read.csv(paste0(dir, '\\', condcells[1], '_slice_labels.csv'), header = FALSE)#running ONCE - should be consistent across batch
+slicenames <- slicenames.df[,2]
+organelles <- slicenames.df[slicenames.df$V3!='',2]
+contacts <- slicenames.df[slicenames.df$V3=='',2]
+contacts <- contacts[which(contacts != 'cell')]
+contacts.components <- lapply(contacts, function(c){
+  o <- strsplit(c, '')[[1]]
+  org <- slicenames.df[slicenames.df$V3 %in% o, 2]
+  return(org)
+})
+names(contacts.components) <- contacts
+```
+
+
+*Combine ImageJ metrics into data frame*
+```{r imagej_metrics_data_frame}
+metrics <- data.frame(condcell = condcells)
+
+#---define custom variables from file name---
+for(param in names(up)){
+  metrics[param] <- sapply(condcells, function(c){strsplit(c, "_")[[1]][up[[param]]]})
+}
+#------------
+
+metrics$cell_area <- sapply(condcells, function(c){ pooled_measurements[[c]]@cells$Area })
+metrics$cell_circ <- sapply(condcells, function(c){ pooled_measurements[[c]]@cells$Circ. })
+
+for(org in c(organelles, contacts)){
+  metrics[paste0(org, "_area")] <- sapply(condcells, function(c){ other = pooled_measurements[[c]]@other;
+                                                          other[other$Type == org,]$Area[1] })#should only have one of each - MIGHT BREAK IF PAIRWISE MISSING - CHECK
+  metrics[paste0(org, "_area_norm_cell")] <- metrics[paste0(org, "_area")]/metrics$cell_area
+  
+  metrics[paste0(org, "_count")] <- sapply(condcells, function(c){ other = individual_measurements[[c]]@other;#FROM INDIVIDUALS DF
+                                                          nrow(other[other$Type == org,]) })
+  
+  metrics[paste0(org, "_size_avg")] <- sapply(condcells, function(c){ other = individual_measurements[[c]]@other;#FROM INDIVIDUALS DF
+                                                        mean(other[other$Type == org,]$Area) })
+  metrics[paste0(org, "_size_sd")] <- sapply(condcells, function(c){ other = individual_measurements[[c]]@other;#FROM INDIVIDUALS DF
+                                                          sd(other[other$Type == org,]$Area) })
+  
+  metrics[paste0(org, "_circ_avg")] <- sapply(condcells, function(c){ other = individual_measurements[[c]]@other;#FROM INDIVIDUALS DF
+                                                        mean(other[other$Type == org,]$Circ.) })
+  metrics[paste0(org, "_circ_sd")] <- sapply(condcells, function(c){ other = individual_measurements[[c]]@other;#FROM INDIVIDUALS DF
+                                                          sd(other[other$Type == org,]$Circ.) })
+}
+
+metrics$total_organelle_area <- sapply(condcells, function(c){df <- summary_measurements[[c]]@data; df[df$Slice == 'organelles','Total.Area'][1]})
+metrics$total_organelle_area_norm_cell <- metrics$total_organelle_area/metrics$cell_area
+metrics$total_contact_area <- sapply(condcells, function(c){df <- summary_measurements[[c]]@data; df[df$Slice == 'pairwise_contact_sites','Total.Area'][1]})
+metrics$total_contact_area_norm_cell <- metrics$total_contact_area/metrics$cell_area
+metrics$total_contact_area_norm_organelles <- metrics$total_contact_area/metrics$total_organelle_area
+
+if('nuclei_area' %in% colnames(metrics)){
+  metrics$cytoplasmic_area <- metrics$cell_area - metrics$nuclei_area
+  for(org in c(organelles)){
+    metrics[paste0(org, "_area_norm_cyto")] <- metrics[paste0(org, "_area")]/metrics$cytoplasmic_area
+    #TODO - conditional on user params
+    #TODO - norm nuclei to cell area instead of cyto
+  }
+}
+```
+
+*Data cleaning*
+```{r imagej_metrics_cleaning}
+metrics[is.na(metrics)] <- 0
+# Additional code here if necessary - e.g. removing bacterial measurements from 'uninfected' cells
+```
+
+Optional - passing through additional measurements from ImageJ, with details from file names
+remove 'eval=FALSE' if desired
+```{r imagej_passthrough, eval = FALSE}
+pooled.df <- do.call(rbind, lapply(1:length(pooled_measurements), function(p){ df <- pooled_measurements[[p]]@data; df$filename <- names(pooled_measurements)[p]; return(df) }))
+extra_measurements.pooled <- left_join(metrics[, c(names(up), 'condcell')], pooled.df, join_by(condcell == filename))
+
+individual.df <- do.call(rbind, lapply(1:length(individual_measurements), function(i){ df <- individual_measurements[[i]]@data; df$filename <- names(individual_measurements)[i]; return(df) }))
+extra_measurements.individual <- left_join(metrics[, c(names(up), 'condcell')], individual.df, join_by(condcell == filename))
+remove(c(pooled.df, individual.df))
+```
+
+*Removing unnecessary variables before advanced metrics processing*
+```{r imagej_cleanup}
+remove(individual_measurements, summary_measurements, slicenames.df)
+```
+
+## Advanced metrics
+```{r adv_setup, include=FALSE}
+library(terra)
+```
+
+*Constants and functions*
+```{r adv_constants_and_functions}
+px_round <- function(x,y){
+  xr <- round(x, digits = 0)
+  yr <- round(y, digits = 0)
+  if((x-xr)<0){ xr <- xr - 0.5 }
+  else if((x-xr)>=0){ xr <- xr + 0.5 }
+  if((y-yr)<0){ yr <- yr - 0.5 }
+  else if((y-yr)>=0){ yr <- yr + 0.5 }
+  return(c(xr, yr))
+}
+
+adv_metrics <- data.frame(
+  condcell = condcells
+)
+
+norm_values <- data.frame(
+  condcell = condcells
+)
+
+cent_type <- ifelse('nuclei' %in% slicenames, 'nuclei', 'cells')
+#TODO - manual option to calculate from cell centroid?
+```
+
+```{r adv_main_loop}
+
+for(c in condcells){
+  print(paste0('Processing condition ', c))
+  cell.raster <- rast(paste0(dir, '\\', c, '_stack.tif'))
+  names(cell.raster) <- slicenames
+  crs(cell.raster) <- 'local' #IMPORTANT - treat as planar coordinates instead of lon/lat
+
+  cell.pixels <- as.data.frame(cell.raster, xy = TRUE) %>% filter(cell >0)
+  
+  p <- pooled_measurements[[c]]@data
+  cell_cent <- p[p$Type == cent_type, c('X', 'Y')]
+  remove(p)
+
+  cell.pixels$dist_to_cent <- abs(sqrt((cell.pixels$x - cell_cent$X[1])^2 + (cell.pixels$y - cell_cent$Y[1])^2))
+  cell.pixels$angle_to_cent <- (atan2((cell.pixels$y - cell_cent$Y[1]), (cell.pixels$x - cell_cent$X[1]))*180)/pi
+  cell.pixels$anglebin <- cut_width(cell.pixels$angle_to_cent, width = binangle, closed = 'left', boundary = 0)
+  
+  cell.raster <- extend(cell.raster, c(1,1), fill = 0)
+  cr <- subst(cell.raster[['cell']], 255, NA)
+  
+  cell.pixels$dist_to_PM <- as.data.frame(mask(distance(cr, exclude = 255), cell.raster[['cell']], maskvalues = 0))[,1]#distance to nearest PM pixel (outside cell)
+  cell.pixels$cent_norm <- cell.pixels$dist_to_cent/(cell.pixels$dist_to_cent + cell.pixels$dist_to_PM)
+  
+  if('nuclei' %in% names(cell.raster)){
+    cell.pixels$dist_to_nucleus = as.data.frame(mask(distance(cell.raster[['nuclei']], target = 0), cell.raster[['cell']], maskvalues = 0))[,1]#distance to nearest nucleus pixel (0 if overlapping)
+    cell.pixels$nuc_norm <- cell.pixels$dist_to_nucleus/(cell.pixels$dist_to_nucleus + cell.pixels$dist_to_PM)
+  }
+  
+  # for(o in slicenames[slicenames != 'cell']){
+  #   adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_MDR')] <- mean(cell.pixels[cell.pixels[,o]>0,]$norm)
+  # }
+  for(o in slicenames){#including cell here - might normalise to cell asymmetry downstream
+    df.org <- cell.pixels[cell.pixels[o] > 0,]
+    
+    #MDR  
+    adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_centroid_MDR')] <- mean(df.org$cent_norm)
+    if('nuclei' %in% names(cell.raster)){
+      adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_nucleus_MDR')] <- mean(df.org$nuc_norm)
+    }
+    
+    #coefficient of asymmetry
+    tab <- as.data.frame(table(df.org$anglebin))
+    tally <- 0
+    halfcount <- nrow(tab)/2
+    for(n in 1:halfcount){
+      a <- abs(tab[n, 'Freq'] - tab[n + halfcount, 'Freq'])
+      tally <- tally + a
+    }
+    CoA <- tally/nrow(df.org)
+    adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_CoA')] <- CoA
+    
+    if (o %in% contacts){
+      #pixel counts for normalising contact areas
+      o.components <- contacts.components[[o]]
+      pix <- nrow(cell.pixels %>% filter(if_any(any_of(o.components), ~.!=0)))
+      norm_values[norm_values$condcell == c, o] <- pix
+    }
+    
+  }
+  
+  remove(cell.raster, cell.pixels, cell_cent)
+}
+```
+*Data cleaning*
+```{r adv_metrics_cleaning}
+adv_metrics[is.na(adv_metrics)] <- 0
+```
+
+*Combining with ImageJ metrics*
+```{r full_metrics_join}
+full_metrics <- dplyr::left_join(metrics, adv_metrics, by = join_by(condcell == condcell))
+```
+
+*Normalising contact areas to areas of involved organelles*
+```{r adv_contact_norm}
+for(c in contacts){
+  # full_metrics[paste0(c, '_area_norm')] <- full_metrics[paste0(c, '_area')]/
+  full_metrics[paste0(c, '_area_norm')] <- sapply(full_metrics$condcell, function(cc){#TODO - make this cleaner/check order is consistent
+    full_metrics[full_metrics$condcell == cc, paste0(c, '_area')]/norm_values[norm_values$condcell == cc, c]
+  })
+}
+```
+
+## Visualisation
+_TODO_
 
