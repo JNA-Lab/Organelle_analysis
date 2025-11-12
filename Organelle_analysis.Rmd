@@ -1,0 +1,57 @@
+---
+title: "Organelle Analysis - all metrics"
+author: "Fiona M. Love"
+date: "2025-11-11"
+output: html_document
+---
+# ORGANELLE ANALYSIS
+
+## User parameters
+
+*file name parsing* - each section of the file name delineated by underscores (_) can be passed as a variable representing e.g. timepoint, cell line, experimental condition, etc.  Indicate which place each one is in here, ensuring there are no spaces or other special characters (besides underscores) in the name.
+e.g. for something like "HeLa_Ctrl_cell1":
+up['cell_line'] <- 1
+up['condition'] <- 2
+up['cell'] <- 3
+
+*normalise_organelles_to* - Which measurement to use to normalise organelle areas.  Options are 'cell', 'cytoplasm' (cell area - nucleus area), 'both', or 'none'. 'Cytoplasm' or 'both' will only work if nuclei were measured in the ImageJ analysis step, and nucleus will still be normalised to cell area unless 'none' is selected.  Organelle contacts are normalised to the cumulative area of the organelle types involved.
+
+```{r user_params}
+up <- list()#leave this line as-is - this variable will be used to retrieve the values below
+up['cell_line'] <- 2
+up['clone'] <- 3
+up['weights'] <- 4
+up['timepoint'] <- 5
+up['image'] <- 6
+up['cell_number'] <- 10
+
+normalise_organelles_to <- 'cell'
+
+#TODO - move binangle here
+```
+
+## ImageJ import and metrics
+*R setup*
+```{r imagej_setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tcltk)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(patchwork)
+library(corrr)
+library(ggcorrplot)
+library(factoextra)
+#additional packages specified directly in function calls:
+#rstudioapi
+#TODO - check these are all still used; move PCA-related to vis section
+```
+
+Select file directory
+*Select ImageJ Macro output directory*
+_R VERSION BUG ON WINDOWS 10_ - WON'T OPEN SELECTION WINDOW UNTIL AFTER file.choose() HAS BEEN RUN
+https://stackoverflow.com/questions/77984544/choose-dir-function-does-not-work-in-r-v4-3-2
+```{r data_location}
+dir <- choose.dir() #WINDOWS ONLY - TODO Mac support with tk option - https://stackoverflow.com/questions/48218491/os-independent-way-to-select-directory-interactively-in-r
+
+```
