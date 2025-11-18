@@ -114,6 +114,7 @@ metrics <- data.frame(condcell = condcells)
 for(param in names(up)){
   metrics[param] <- sapply(condcells, function(c){strsplit(c, "_")[[1]][up[[param]]]})
 }
+remove(param)
 #------------
 
 metrics$cell_area <- sapply(condcells, function(c){ pooled_measurements[[c]]@cells$Area })
@@ -137,6 +138,7 @@ for(org in c(organelles, contacts)){
   metrics[paste0(org, "_circ_sd")] <- sapply(condcells, function(c){ other = individual_measurements[[c]]@other;#FROM INDIVIDUALS DF
                                                           sd(other[other$Type == org,]$Circ.) })
 }
+remove(org)
 
 metrics$total_organelle_area <- sapply(condcells, function(c){df <- summary_measurements[[c]]@data; df[df$Slice == 'organelles','Total.Area'][1]})
 metrics$total_organelle_area_norm_cell <- metrics$total_organelle_area/metrics$cell_area
@@ -151,6 +153,7 @@ if('nuclei_area' %in% colnames(metrics)){
     #TODO - conditional on user params
     #TODO - norm nuclei to cell area instead of cyto
   }
+  remove(org)
 }
 ```
 
@@ -267,7 +270,9 @@ for(c in condcells){
   }
   
   remove(cell.raster, cell.pixels, cell_cent)
+  remove(pix, o.components, df.org, o, CoA, tally, a, n, halfcount, tab, cr)
 }
+remove(c)
 ```
 *Data cleaning*
 ```{r adv_metrics_cleaning}
@@ -287,6 +292,7 @@ for(c in contacts){
     full_metrics[full_metrics$condcell == cc, paste0(c, '_area')]/norm_values[norm_values$condcell == cc, c]
   })
 }
+remove(c)
 ```
 
 ## Visualisation
