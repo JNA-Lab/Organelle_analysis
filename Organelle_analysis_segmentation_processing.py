@@ -15,15 +15,15 @@ organelles_short = {'nuclei':'n', 'Golgi':'g', 'peroxisomes':'p', 'ER':'e', 'mit
 
 #***USER DEFAULTS***
 #change these values to set your default cell/organelle suffixes
-default_cells = "_Max_Z_Project_cp_masks"
+default_cells = "_cells"
 default_org = dict()
-default_org["nuclei"] = "_Max_Z_Project_cp_nuclei"
-default_org["Golgi"] = "-subc_Golgi_v13_nucleus_&_perox_subtraction"
-default_org["peroxisomes"] = "-subc_Peroxisomes_v4"
-default_org["ER"] = "-subc_ER_Tom_Allen"
-default_org["mitochondria"] = "-subc_Mitochondria_v4"
-default_org["lysosomes"] = "-subc_Lysosomes_v4"
-default_org["other"] = "-Ot_LD"
+default_org["nuclei"] = "_nuclei"
+default_org["Golgi"] = "_Gogi"
+default_org["peroxisomes"] = "_peroxisomes"
+default_org["ER"] = "_ER"
+default_org["mitochondria"] = "_mitochondria"
+default_org["lysosomes"] = "_lysosomes"
+default_org["other"] = "_other"
 default_checkboxes = [True, True, True, True, True, True, False]#in same organelle order as above (cell boundaries are mandatory)
 other_name = "Other"
 #*********************
@@ -102,12 +102,9 @@ if options.wasOKed():#is this necessary?
 		contact_combos = []
 		for n in range(2, len(organelles_selected)+1, 1):
 			contact_combos = contact_combos + list(combinations(organelles_selected, n))
-		print(contact_combos)
 		contact_groups_keys = []
 		for g in contact_combos:
-			print(g)
 			contact_groups_keys.append(''.join([organelles_short.get(key) for key in g]))
-		print(contact_groups_keys)
 		contact_groups = dict(zip(contact_groups_keys, contact_combos))#
 		
 		contact_ROI_groups = dict(zip(contact_groups.keys(), range(max(ROI_groups.values()) + 1, max(ROI_groups.values()) + 1 + len(contact_groups), 1)))	
@@ -171,15 +168,16 @@ for c in conditions:
 		images_to_stack.append(org_img)
 		
 	#ORGANELLE OVERLAPS
-	for combo in contact_groups.keys():
-		combo_res = imp_key[contact_groups[combo][0]]
-		combo_i = 1
-		while(combo_i < len(contact_groups[combo])):
-			combo_res = ImageCalculator.run(combo_res, imp_key[contact_groups[combo][combo_i]], "AND create")
-			combo_i += 1
-		combo_res.setTitle(combo)
-		images_to_stack.append(combo_res)
-	
+	if(contacts_bool == True):
+		for combo in contact_groups.keys():
+			combo_res = imp_key[contact_groups[combo][0]]
+			combo_i = 1
+			while(combo_i < len(contact_groups[combo])):
+				combo_res = ImageCalculator.run(combo_res, imp_key[contact_groups[combo][combo_i]], "AND create")
+				combo_i += 1
+			combo_res.setTitle(combo)
+			images_to_stack.append(combo_res)
+
 	#STACK
 	orgstack = I2S.run(images_to_stack)
 	orgstack.setTitle("Organelles")
@@ -197,7 +195,7 @@ for c in conditions:
 	
 	#Per step (cell) loop:
 	for i in range(1, cells_max + 1, 1):
-		print("Processing cell " + str(i) + "...")
+		print("Processing cell " + str(i) + " of " + str(cells_max) + "...")
 		cell_id = "cell_" + str(i)
 		#duplicate cell image
 		cells_copy = cells.duplicate()
@@ -219,10 +217,9 @@ for c in conditions:
 			rm.runCommand("Delete")
 		rm.rename(0, cell_id)#renaming for image-wide list
 		cells_ROIs_orig[cell_id] = rm.getRoi(0)
+		
 		#duplicate stack and clear outside ROI
-		rm.select(0)
-
-#probably redundant
+		rm.select(0)#probably redundant
 		cell_crop = orgstack.crop([rm.getRoi(0)], "stack")[0]
 		cell_crop.setTitle(cell_id)
 		rm.addRoi(cell_crop.getRoi())#cell boundary in cropped image
@@ -242,7 +239,13 @@ for c in conditions:
 			cell_crop = ImageCalculator.run(cell_crop, nuclei_slice, "subtract create stack")			
 			cell_crop.getImageStack().addSlice('nuclei', nuclei_slice.getProcessor())
 			#NOT removing nucleus from cell ROI - calculate cytoplasm area separately
-		cell_crop.getImageStack().addSlice('cell', cell_crop_mask)#adding cell mask to stack
+		
+		if cell_crop.getStackSize() == 1:#single slice - ImageProcessor rather than ImageStack
+			cell_crop = I2S.run([ImagePlus(organelles_selected[0], cell_crop.getChannelProcessor()), ImagePlus('cell', cell_crop_mask)])
+			#should only have one entry in organelles_selected - filter on this earlier?
+		else:
+			cell_crop.getImageStack().addSlice('cell', cell_crop_mask)#adding cell mask to stack
+		
 		#analyse particles per organelle/pair
 		#manual implementation of SE.convertStackToImages for background running:
 		cell_crop_slices = cell_crop.getStackSize()
@@ -269,21 +272,22 @@ for c in conditions:
 				for i in range(roi_start, roi_start + roi_count, 1):
 					rm.rename(i, cell_id + "_" + org + "_" + str(i - roi_start + 1))
 			org_img.close()#TODO - move below?
-		combo_present = []
-		for combo in contact_groups.keys():
-			if set(contact_groups[combo]).issubset(organelles_selected):
-				combo_present.append(combo)
-				Roi.setDefaultGroup(contact_ROI_groups[combo])
-				combo_img = crop_key[combo]
-				IJ.run(combo_img, "Analyze Particles...", "size=0-Infinity add composite")
-				rm.deselect()
-				rm.selectGroup(contact_ROI_groups[combo])
-				combo_roi_start = rm.getSelectedIndex()
-				combo_roi_count = rm.selected()
-				if combo_roi_count > 0:
-					for i in range(combo_roi_start, combo_roi_start + combo_roi_count, 1):
-						rm.rename(i, cell_id + "_" + combo + "_" + str(i - combo_roi_start + 1))
-				combo_img.close()#TODO - move below?	
+		if(contacts_bool == True):
+			combo_present = []
+			for combo in contact_groups.keys():
+				if set(contact_groups[combo]).issubset(organelles_selected):
+					combo_present.append(combo)
+					Roi.setDefaultGroup(contact_ROI_groups[combo])
+					combo_img = crop_key[combo]
+					IJ.run(combo_img, "Analyze Particles...", "size=0-Infinity add composite")
+					rm.deselect()
+					rm.selectGroup(contact_ROI_groups[combo])
+					combo_roi_start = rm.getSelectedIndex()
+					combo_roi_count = rm.selected()
+					if combo_roi_count > 0:
+						for i in range(combo_roi_start, combo_roi_start + combo_roi_count, 1):
+							rm.rename(i, cell_id + "_" + combo + "_" + str(i - combo_roi_start + 1))
+					combo_img.close()#TODO - move below?	
 				
 		#save cropped stack
 		cell_crop_copy = cell_crop.duplicate()
@@ -302,7 +306,10 @@ for c in conditions:
 		rm.runCommand(cell_img, "Measure")#TODO - limit slices?
 		results = ResultsTable.getResultsTable()
 		#add groups for processing in R
-		full_ROI_groups = dict(ROI_groups, **contact_ROI_groups)#combine
+		if(contacts_bool == True):
+			full_ROI_groups = dict(ROI_groups, **contact_ROI_groups)#combine
+		else:
+			full_ROI_groups = dict(ROI_groups)
 		groups_to_type = {v:k for k, v in full_ROI_groups.items()}
 		for i in range(0, results.size(), 1):
 			results.setValue("Type", i, groups_to_type[int(results.getValue("Group", i))])
@@ -312,8 +319,9 @@ for c in conditions:
 		
 		#POOLED ROI ANALYSIS
 		all_ROI_groups = ROI_groups#includes only selected organelles
-		for combo in combo_present:#from section above - checks whether both organelles in pair are selected
-			all_ROI_groups[combo] = contact_ROI_groups[combo]	
+		if(contacts_bool == True):
+			for combo in combo_present:#from section above - checks whether both organelles in pair are selected
+				all_ROI_groups[combo] = contact_ROI_groups[combo]	
 		for r in all_ROI_groups.keys():#includes contact groups
 			Roi.setDefaultGroup(all_ROI_groups[r])
 			rm.selectGroup(all_ROI_groups[r])
@@ -345,7 +353,10 @@ for c in conditions:
 		rm.deselect()
 		rm.runCommand(cell_img, "Measure")
 		#add groups for processing in R - copied from above
-		full_ROI_groups = dict(ROI_groups, **contact_ROI_groups)#combine
+		if(contacts_bool == True):
+			full_ROI_groups = dict(ROI_groups, **contact_ROI_groups)#combine
+		else:
+			full_ROI_groups = dict(ROI_groups)
 		groups_to_type = {v:k for k, v in full_ROI_groups.items()}
 		for i in range(0, results.size(), 1):
 			results.setValue("Type", i, groups_to_type[int(results.getValue("Group", i))])
@@ -364,17 +375,19 @@ for c in conditions:
 		for i in range(1, nSlices + 1, 1):
 			slicenames[cell_crop.getImageStack().getShortSliceLabel(i)] = i
 		org_slicenames = dict((k, slicenames[k]) for k in organelles_selected)
-		combo_slicenames = dict((k, slicenames.get(k)) for k in combo_present)
 		cell_crop_mainorg = SM.makeSubstack(cell_crop, ','.join([str(i) for i in org_slicenames.values()]))
-		cell_crop_contact = SM.makeSubstack(cell_crop, ','.join([str(i) for i in combo_slicenames.values()]))
 		mainorg_max = ZProjector.run(cell_crop_mainorg, "max")
 		mainorg_max.setTitle("organelles")
-		contact_max = ZProjector.run(cell_crop_contact, "max")
-		contact_max.setTitle("contact_sites")
 		PA.setSummaryTable(results)
-		IJ.run(mainorg_max, "Analyze Particles...", "size=0-Infinity summarize composite")
-		PA.setSummaryTable(results)
-		IJ.run(contact_max, "Analyze Particles...", "size=0-Infinity summarize composite")
+		IJ.run(mainorg_max, "Analyze Particles...", "size=0-Infinity summarize composite")
+		if(contacts_bool == True):
+			combo_slicenames = dict((k, slicenames.get(k)) for k in combo_present)
+			cell_crop_contact = SM.makeSubstack(cell_crop, ','.join([str(i) for i in combo_slicenames.values()]))
+			contact_max = ZProjector.run(cell_crop_contact, "max")
+			contact_max.setTitle("contact_sites")
+			PA.setSummaryTable(results)
+			IJ.run(contact_max, "Analyze Particles...", "size=0-Infinity summarize composite")
+			
 		results.save(datadir + "/analysis/" + c + "_" + cell_id + "_summary_results.csv")
 		
 
