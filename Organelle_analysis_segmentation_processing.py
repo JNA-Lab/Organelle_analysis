@@ -230,7 +230,7 @@ for c in conditions:
 		#removing all pixels outside cell mask for cell_crop stack
 		IJ.run(cell_crop, "Clear Outside", "stack")
 		cell_crop_mask = cell_crop.createRoiMask()
-		if(nuclei_bool == True):
+		if(nuclei_bool == True) and ('nuclei' in organelles_selected):
 			cell_crop_slice_order = cell_crop.getImageStack().getSliceLabels()
 			nuclei_index = cell_crop_slice_order.index('nuclei') + 1 #(slices 1-indexed)
 			#subtract nuclei, re-add nuclei after current index, delete current nuclei slice
