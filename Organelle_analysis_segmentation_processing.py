@@ -18,11 +18,11 @@ organelles_short = {'nuclei':'n', 'Golgi':'g', 'peroxisomes':'p', 'ER':'e', 'mit
 default_cells = "_cells"
 default_org = dict()
 default_org["nuclei"] = "_nuclei"
-default_org["Golgi"] = "_Gogi"
-default_org["peroxisomes"] = "_peroxisomes"
-default_org["ER"] = "_ER"
-default_org["mitochondria"] = "_mitochondria"
-default_org["lysosomes"] = "_lysosomes"
+default_org["Golgi"] = "_Golgi_seg"
+default_org["peroxisomes"] = "_perox_seg"
+default_org["ER"] = "_ER_seg"
+default_org["mitochondria"] = "_mito_seg"
+default_org["lysosomes"] = "_lyso_seg"
 default_org["other"] = "_other"
 default_checkboxes = [True, True, True, True, True, True, False]#in same organelle order as above (cell boundaries are mandatory)
 other_name = "Other"
@@ -62,7 +62,7 @@ options.addMessage("\n\n")
 options.addStringField("Other organelle", other_name)
 options.addMessage("\n\n")
 options.addCheckbox("Calculate pixel overlaps?", True)
-options.addCheckbox("Delete organelles inside nucleus mask?", True)
+options.addCheckbox("Delete organelles inside nucleus mask?", False)
 options.showDialog()
 
 if options.wasOKed():#is this necessary?

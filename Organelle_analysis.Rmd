@@ -20,12 +20,10 @@ up['cell'] <- 3
 
 ```{r user_params}
 up <- list()#leave this line as-is - this variable will be used to retrieve the values below
-up['cell_line'] <- 2
-up['clone'] <- 3
-up['weights'] <- 4
-up['timepoint'] <- 5
-up['image'] <- 6
-up['cell_number'] <- 10
+up['batch'] <- 1
+up['rep'] <- 2
+up['cond'] <- 3
+up['image'] <- 4
 
 normalise_organelles_to <- 'cell'
 
@@ -172,7 +170,7 @@ extra_measurements.pooled <- left_join(metrics[, c(names(up), 'condcell')], pool
 
 individual.df <- do.call(rbind, lapply(1:length(individual_measurements), function(i){ df <- individual_measurements[[i]]@data; df$filename <- names(individual_measurements)[i]; return(df) }))
 extra_measurements.individual <- left_join(metrics[, c(names(up), 'condcell')], individual.df, join_by(condcell == filename))
-remove(c(pooled.df, individual.df))
+remove(pooled.df, individual.df)
 ```
 
 *Removing unnecessary variables before advanced metrics processing*
