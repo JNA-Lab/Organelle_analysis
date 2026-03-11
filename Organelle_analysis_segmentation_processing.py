@@ -236,7 +236,7 @@ for c in conditions:
 		cell_crop_mask = cell_crop.createRoiMask()
 		
 		
-		#create duplicate stack for distance map operations and invert all channels (not including cell mask - adding below)
+		#create duplicate stack for distance map operations and invert all channels (not cell mask - adding below)
 		distack = cell_crop.duplicate()
 		distack.setTitle("Distance Maps")
 		if distack.getStackSize == 1:#single slice - ImageProcessor rather than ImageStack
@@ -244,7 +244,6 @@ for c in conditions:
 		else:
 			for s in range(1, distack.getNSlices() + 1, 1):
 				distack.getImageStack().getProcessor(s).invert()
-				
 				
 		#handle nuclei options
 		if(nuclei_bool == True) and ('nuclei' in organelles_selected):
@@ -256,21 +255,19 @@ for c in conditions:
 			cell_crop = ImageCalculator.run(cell_crop, nuclei_slice, "subtract create stack")			
 			cell_crop.getImageStack().addSlice('nuclei', nuclei_slice.getProcessor())
 			#NOT removing nucleus from cell ROI - calculate cytoplasm area separately
-
+			
 		#add cell mask as a slice to both stacks
 		if cell_crop.getStackSize() == 1:#single slice - ImageProcessor rather than ImageStack
 			cell_crop = I2S.run([ImagePlus(organelles_selected[0], cell_crop.getChannelProcessor()), ImagePlus('cell', cell_crop_mask)])
 			#should only have one entry in organelles_selected - filter on this earlier?
 			distack = I2S.run([ImagePlus(organelles_selected[0], distack.getChannelProcessor()), ImagePlus('cell', cell_crop_mask)])
 		else:
-			cell_crop.getImageStack().addSlice('cell', cell_crop_mask.duplicate())#adding cell mask to stack
-			distack.getImageStack().addSlice('cell', cell_crop_mask.duplicate())
+			cell_crop.getImageStack().addSlice('cell', cell_crop_mask)#adding cell mask to stack
+			distack.getImageStack().addSlice('cell', cell_crop_mask)
 			
 		#compute distance maps
-		distmaps = []
 		for s in range(1, distack.getNSlices() + 1, 1):
-			distmaps.append(ImagePlus(distack.getImageStack().getSliceLabel(s), EDM.makeFloatEDM(distack.getImageStack().getProcessor(s), 0, False)))
-		distack = I2S.run(distmaps)
+			EDM.toEDM(distack.getImageStack().getProcessor(s))
 		
 		
 		#analyse particles per organelle/pair
@@ -347,15 +344,9 @@ for c in conditions:
 		results.save(datadir + "/analysis/" + c + "_" + cell_id + "_results.csv")
 		
 		#TODO - implement additional metric(s)
-		#----------
 		#intersection with different organelle/combo types
-		mmnames = distack.getImageStack().getSliceLabels()
-		print(mmnames)
-		#mmresults = RM.multiMeasure(distack, rm.getRoisAsArray(), False)
-		#for i in range(0, mmresults.size(), 1):
-			#placeholder
-		#mmresults.save(datadir + "/analysis/" + c + "_" + cell_id + "_MULTIMEASUREresults.csv")
-		#-------	
+		
+		
 		
 		
 		#POOLED ROI ANALYSIS
