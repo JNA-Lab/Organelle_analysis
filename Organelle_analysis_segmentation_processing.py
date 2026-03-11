@@ -4,7 +4,7 @@ from ij.io import DirectoryChooser
 from ij.measure import ResultsTable
 from ij.plugin import Duplicator, ImageCalculator, ImagesToStack, SubstackMaker, ZProjector, HyperStackConverter
 from ij.plugin.frame import RoiManager
-from ij.plugin.filter import ParticleAnalyzer
+from ij.plugin.filter import EDM, ParticleAnalyzer
 import os
 import re
 from itertools import combinations#for organelle overlaps
@@ -63,6 +63,7 @@ options.addStringField("Other organelle", other_name)
 options.addMessage("\n\n")
 options.addCheckbox("Calculate pixel overlaps?", True)
 options.addCheckbox("Delete organelles inside nucleus mask?", False)
+options.addCheckbox("Calculate additional metrics (might be very slow)?", True)
 options.showDialog()
 
 if options.wasOKed():#is this necessary?
@@ -79,6 +80,7 @@ if options.wasOKed():#is this necessary?
 	other_name = options.getNextString()
 	contacts_bool = options.getNextBoolean()
 	nuclei_bool = options.getNextBoolean()
+	additional_bool = options.getNextBoolean()
 	
 	org_regex = {k:v for (k,v), b in zip(org_regex.items(), list(org_bool.values())) if b == True}
 	organelles_selected = []
@@ -131,14 +133,16 @@ for f in filenames_filtered:
 
 
 #set up ROI manager
-RM = RoiManager(False)
-#don't display
+RM = RoiManager(False)#don't display
 rm = RM.getRoiManager()
 rm.hide()
 I2S = ImagesToStack()
 SM = SubstackMaker()
+EDM = EDM()
 PA = ParticleAnalyzer()
 D = Duplicator()
+
+
 ##MAIN LOOP
 progress = 0
 for c in conditions:
@@ -230,6 +234,18 @@ for c in conditions:
 		#removing all pixels outside cell mask for cell_crop stack
 		IJ.run(cell_crop, "Clear Outside", "stack")
 		cell_crop_mask = cell_crop.createRoiMask()
+		
+		
+		#create duplicate stack for distance map operations and invert all channels (not cell mask - adding below)
+		distack = cell_crop.duplicate()
+		distack.setTitle("Distance Maps")
+		if distack.getStackSize == 1:#single slice - ImageProcessor rather than ImageStack
+			distack.getProcessor().invert()
+		else:
+			for s in range(1, distack.getNSlices() + 1, 1):
+				distack.getImageStack().getProcessor(s).invert()
+				
+		#handle nuclei options
 		if(nuclei_bool == True) and ('nuclei' in organelles_selected):
 			cell_crop_slice_order = cell_crop.getImageStack().getSliceLabels()
 			nuclei_index = cell_crop_slice_order.index('nuclei') + 1 #(slices 1-indexed)
@@ -239,12 +255,20 @@ for c in conditions:
 			cell_crop = ImageCalculator.run(cell_crop, nuclei_slice, "subtract create stack")			
 			cell_crop.getImageStack().addSlice('nuclei', nuclei_slice.getProcessor())
 			#NOT removing nucleus from cell ROI - calculate cytoplasm area separately
-		
+			
+		#add cell mask as a slice to both stacks
 		if cell_crop.getStackSize() == 1:#single slice - ImageProcessor rather than ImageStack
 			cell_crop = I2S.run([ImagePlus(organelles_selected[0], cell_crop.getChannelProcessor()), ImagePlus('cell', cell_crop_mask)])
 			#should only have one entry in organelles_selected - filter on this earlier?
+			distack = I2S.run([ImagePlus(organelles_selected[0], distack.getChannelProcessor()), ImagePlus('cell', cell_crop_mask)])
 		else:
 			cell_crop.getImageStack().addSlice('cell', cell_crop_mask)#adding cell mask to stack
+			distack.getImageStack().addSlice('cell', cell_crop_mask)
+			
+		#compute distance maps
+		for s in range(1, distack.getNSlices() + 1, 1):
+			EDM.toEDM(distack.getImageStack().getProcessor(s))
+		
 		
 		#analyse particles per organelle/pair
 		#manual implementation of SE.convertStackToImages for background running:
@@ -291,9 +315,12 @@ for c in conditions:
 				
 		#save cropped stack
 		cell_crop_copy = cell_crop.duplicate()
-		HyperStackConverter.toHyperStack(cell_crop_copy, len(images_to_stack) + 1, 1, 1)
-#+1 for added cell mask
+		distack_copy = distack.duplicate()
+		HyperStackConverter.toHyperStack(cell_crop_copy, len(images_to_stack) + 1, 1, 1)#+1 for added cell mask
+		HyperStackConverter.toHyperStack(distack_copy, len(images_to_stack) + 1, 1, 1)
 		IJ.saveAs(cell_crop_copy, "Tiff", datadir + "/analysis/" + c + "_" + cell_id + "_stack.tif")
+		IJ.saveAs(distack_copy, "Tiff", datadir + "/analysis/" + c + "_" + cell_id + "_distance_maps.tif")
+
 		
 		#save ROIs
 		rm.runCommand("Select All")
@@ -315,6 +342,11 @@ for c in conditions:
 			results.setValue("Type", i, groups_to_type[int(results.getValue("Group", i))])
 		#save measurements
 		results.save(datadir + "/analysis/" + c + "_" + cell_id + "_results.csv")
+		
+		#TODO - implement additional metric(s)
+		#intersection with different organelle/combo types
+		
+		
 		
 		
 		#POOLED ROI ANALYSIS
