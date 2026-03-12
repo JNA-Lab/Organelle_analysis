@@ -226,7 +226,7 @@ for(c in condcells){
   cell.pixels$angle_to_cent <- (atan2((cell.pixels$y - cell_cent$Y[1]), (cell.pixels$x - cell_cent$X[1]))*180)/pi
   cell.pixels$anglebin <- cut_width(cell.pixels$angle_to_cent, width = binangle, closed = 'left', boundary = 0)
   
-  cell.raster <- extend(cell.raster, c(1,1), fill = 0)
+  cell.raster <- extend(cell.raster, c(1,1), fill = 0)#TODO - check for 1-pixel xy offset vs cell.pixels
   cr <- subst(cell.raster[['cell']], 255, NA)
   
   cell.pixels$dist_to_PM <- as.data.frame(mask(distance(cr, exclude = 255), cell.raster[['cell']], maskvalues = 0))[,1]#distance to nearest PM pixel (outside cell)
@@ -240,9 +240,15 @@ for(c in condcells){
   for(org in c(organelles, contacts)[!c(organelles, contacts) %in% c('cell', 'nuclei')]){#distance maps
     if(sum(cell.pixels[,org])>0){
       cell.pixels[paste0("dist_to_", org)] <- as.data.frame(mask(distance(cell.raster[[org]], target = 0), cell.raster[['cell']], maskvalues = 0))[,1]#distance to nearest org pixel (0 if overlapping)
+      
+      patches <- as.data.frame(patches(cell.raster[[org]]), xy = TRUE)
+      cell.pixels <- cell.pixels %>% left_join(patches, join_by(x,y))
+      cell.pixels[paste0(org, "_patch")] <- cell.pixels$patches #renaming to organelle-specific
+      cell.pixels <- cell.pixels %>% select(-patches)
     }
     else{
       cell.pixels[paste0("dist_to_", org)] <- NA
+      cell.pixels[paste0(org, "_patch")] <- NA
     }
     
   }
@@ -274,8 +280,17 @@ for(c in condcells){
     
     #distance to nearest
     for(o2 in slicenames[!slicenames %in% c('nuclei', 'cell')]){
-      adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_mean_dist_to_', o2)] <- mean(pull(df.org, paste0('dist_to_', o2)))
+      adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_pixelwise_mean_dist_to_', o2)] <- mean(pull(df.org, paste0('dist_to_', o2)))
+      
+      patch_summary <- df.org %>%
+        group_by(paste0(o, '_patch')) %>%
+        summarise(min_dist = min(paste0('dist_to_', o2)))
+      
+      adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_instance_mean_dist_to_', o2)] <- mean(patch_summary$min_dist)
+      adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_percent_in_contact_with_', o2)] <- sum(patch_summary$min_dist == 0)/nrow(patch_summary)
     }
+    
+    
     
     if (o %in% contacts){
       #pixel counts for normalising contact areas
@@ -287,7 +302,7 @@ for(c in condcells){
   }
   
   remove(cell.raster, cell.pixels, cell_cent)
-  remove(pix, o.components, df.org, o, CoA, tally, a, n, halfcount, tab, cr)
+  remove(pix, o.components, df.org, o, CoA, tally, a, n, halfcount, tab, cr, patch_summary)
 }
 remove(c)
 ```
