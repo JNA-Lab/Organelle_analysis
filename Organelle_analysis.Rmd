@@ -211,6 +211,7 @@ cent_type <- ifelse('nuclei' %in% slicenames, 'nuclei', 'cells')
 
 for(c in condcells){
   print(paste0('Processing condition ', c))
+  print(Sys.time())
   cell.raster <- rast(paste0(dir, '\\', c, '_stack.tif'))
   names(cell.raster) <- slicenames
   crs(cell.raster) <- 'local' #IMPORTANT - treat as planar coordinates instead of lon/lat
@@ -236,6 +237,18 @@ for(c in condcells){
     cell.pixels$nuc_norm <- cell.pixels$dist_to_nucleus/(cell.pixels$dist_to_nucleus + cell.pixels$dist_to_PM)
   }
   
+  for(org in c(organelles, contacts)[!c(organelles, contacts) %in% c('cell', 'nuclei')]){#distance maps
+    if(sum(cell.pixels[,org])>0){
+      cell.pixels[paste0("dist_to_", org)] <- as.data.frame(mask(distance(cell.raster[[org]], target = 0), cell.raster[['cell']], maskvalues = 0))[,1]#distance to nearest org pixel (0 if overlapping)
+    }
+    else{
+      cell.pixels[paste0("dist_to_", org)] <- NA
+    }
+    
+  }
+  remove(org)
+  
+  
   # for(o in slicenames[slicenames != 'cell']){
   #   adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_MDR')] <- mean(cell.pixels[cell.pixels[,o]>0,]$norm)
   # }
@@ -259,6 +272,11 @@ for(c in condcells){
     CoA <- tally/nrow(df.org)
     adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_CoA')] <- CoA
     
+    #distance to nearest
+    for(o2 in slicenames[!slicenames %in% c('nuclei', 'cell')]){
+      adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_mean_dist_to_', o2)] <- mean(pull(df.org, paste0('dist_to_', o2)))
+    }
+    
     if (o %in% contacts){
       #pixel counts for normalising contact areas
       o.components <- contacts.components[[o]]
@@ -275,7 +293,7 @@ remove(c)
 ```
 *Data cleaning*
 ```{r adv_metrics_cleaning}
-adv_metrics[is.na(adv_metrics)] <- 0
+#adv_metrics[is.na(adv_metrics)] <- 0 #DON'T USE - NEED TO EXCLUDE CELLS WITHOUT PARTICULAR ORGANELLES/CONTACTS
 ```
 
 *Combining with ImageJ metrics*
@@ -296,4 +314,37 @@ remove(c)
 
 ## Visualisation
 _TODO_
+```{r}
+exclude_nuclei_metrics <- TRUE #not excluding nuclear area, CoA, etc.
+if(exclude_nuclei_metrics){
+  organelles <- organelles[organelles != 'nuclei']
+  contacts <- contacts[!grepl('n', contacts)]
+}
+```
 
+*MEAN DISTANCES HEATMAP*
+```{r pull_distance_metrics}
+dist_metrics <- full_metrics %>% select(names(up) | contains('_mean_dist_to_'))
+dist_metrics.org_to_org <- dist_metrics %>% select(names(up) | starts_with(organelles) & ends_with(organelles))
+dist_metrics.contact_to_contact <- dist_metrics %>% select(names(up) | starts_with(contacts) & ends_with(contacts))
+dist_metrics.contact_to_org <- dist_metrics %>% select(names(up) | starts_with(contacts) & ends_with(organelles))
+dist.metrics.org_to_contacts <- dist_metrics %>% select(names(up) | starts_with(organelles) & ends_with(contacts))
+```
+```{r reshape_for_heatmap}
+#organelle to organelle
+org_to_org <- do.call(rbind, lapply(1:nrow(dist_metrics.org_to_org), function(i){
+  df <- do.call(rbind, lapply(colnames(dist_metrics.org_to_org)[!colnames(dist_metrics.org_to_org) %in% names(up)], function(col){
+          colsplit <- strsplit(col, '_mean_dist_to_')
+          from <- colsplit[[1]][1]
+          to <- colsplit[[1]][2]
+          value <- dist_metrics[i, col]
+          d <- data.frame(from = from, to = to, value = value)
+          return(d)
+        }))
+  df[names(up)] <- dist_metrics.org_to_org[rep_len(i, nrow(df)), names(up)]
+  return(df)
+}))
+```
+```{r ggplot2_tile_heatmap}
+ggplot(org_to_org, aes(y = from, x = to, fill = value)) + geom_tile() + facet_wrap(~cond)
+```
