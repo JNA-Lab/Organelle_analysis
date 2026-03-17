@@ -37,8 +37,9 @@ filenames = []
 
 for obj in os.listdir(datadir):
 	if os.path.isfile(datadir + "/" + obj):
-		filenames.append(obj)
-		f_ext.add(re.search(r"\.([A-Za-z0-9]+)$", obj).group(1))
+		if obj != ".DS_Store":
+			filenames.append(obj)
+			f_ext.add(re.search(r"\.([A-Za-z0-9]+)$", obj).group(1))
 
 #create analysis folder for output
 if not os.path.exists(datadir + "/analysis/"):
