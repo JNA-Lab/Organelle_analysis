@@ -25,6 +25,7 @@ default_org["mitochondria"] = "_mito_seg"
 default_org["lysosomes"] = "_lyso_seg"
 default_org["other"] = "_other"
 default_checkboxes = [True, True, True, True, True, True, False]#in same organelle order as above (cell boundaries are mandatory)
+default_invert = [False, True, True, True, True, True, True]#whether or not to invert segmentation image - for Ilastik exports
 other_name = "Other"
 #*********************
 
@@ -59,6 +60,8 @@ for i in range(0, len(organelles), 1):
 	options.addCheckbox(o, default_checkboxes[i])
 	options.addToSameRow()
 	options.addStringField('', default_org[o])
+	options.addToSameRow()
+	options.addCheckbox('Invert?', default_invert[i])
 options.addMessage("\n\n")
 options.addStringField("Other organelle", other_name)
 options.addMessage("\n\n")
@@ -74,9 +77,11 @@ if options.wasOKed():#is this necessary?
 	cell_regex = options.getNextString()
 	org_bool = dict()
 	org_regex = dict()#not actually regex - just using str.replace for now
+	org_invert = dict()
 	for o in organelles:
 		org_bool[o] = options.getNextBoolean()
 		org_regex[o] = options.getNextString()
+		org_invert[o] = options.getNextBoolean()
 	other_name = options.getNextString()
 	contacts_bool = options.getNextBoolean()
 	nuclei_bool = options.getNextBoolean()
@@ -164,6 +169,8 @@ for c in conditions:
 	#ORGANELLE THRESHOLDING
 	for org in organelles_selected:
 		org_img = imp_key[org]
+		if org_invert[org] == True:
+			org_img.getProcessor().invert()
 		IJ.setRawThreshold(org_img, 1, (2**org_img.getBitDepth())-1)#will work for 8 or 16-bit; might break on 32-bit or RGB
 		IJ.run(org_img, "Convert to Mask", "")
 		images_to_stack.append(org_img)
