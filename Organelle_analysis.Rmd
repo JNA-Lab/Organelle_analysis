@@ -55,6 +55,7 @@ library(factoextra)
 ```{r data_location}
 dir <- rstudioapi::selectDirectory(caption = "Select 'anaysis' folder from ImageJ macro")
 #TODO - note about running in Rstudio/from other tools - might need to change/specify directory
+filesep = .Platform$file.sep
 ```
 
 *Identify conditions for matching and iterating over ROI/measurement files*
@@ -70,7 +71,7 @@ setClass("Measurements", slots = c(data = "data.frame", cells = "data.frame", ot
 
 #measurements cleaning/categories
 process_measurements <- function(dir, condition, file_pattern){
-  df <- read.csv(paste0(dir, '\\', condition, file_pattern))
+  df <- read.csv(paste0(dir, filesep, condition, file_pattern))
   df$ROI_name <- unlist(regmatches(df$Label, regexec("(?<=:).+(?=:)?", df$Label, perl = T)))
   #TODO - this might break if trailing : missing - dependent on single/multi channel image - should be consistent with macro
   df.cells = df[df$Type == 'cells',]
@@ -90,7 +91,7 @@ names(summary_measurements) <- condcells
 *Identify set of organelles and types of contacts*
 ```{r organelles_and_contacts}
 #Copied from advanced metrics - remove when combining
-slicenames.df <- read.csv(paste0(dir, '\\', condcells[1], '_slice_labels.csv'), header = FALSE)#running ONCE - should be consistent across batch
+slicenames.df <- read.csv(paste0(dir, filesep, condcells[1], '_slice_labels.csv'), header = FALSE)#running ONCE - should be consistent across batch
 slicenames <- slicenames.df[,2]
 organelles <- slicenames.df[slicenames.df$V3!='',2]
 contacts <- slicenames.df[slicenames.df$V3=='',2]
@@ -212,7 +213,7 @@ cent_type <- ifelse('nuclei' %in% slicenames, 'nuclei', 'cells')
 for(c in condcells){
   print(paste0('Processing condition ', c))
   print(Sys.time())
-  cell.raster <- rast(paste0(dir, '\\', c, '_stack.tif'))
+  cell.raster <- rast(paste0(dir, filesep, c, '_stack.tif'))
   names(cell.raster) <- slicenames
   crs(cell.raster) <- 'local' #IMPORTANT - treat as planar coordinates instead of lon/lat
 
