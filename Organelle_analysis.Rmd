@@ -21,9 +21,10 @@ up['cell'] <- 3
 ```{r user_params}
 up <- list()#leave this line as-is - this variable will be used to retrieve the values below
 up['batch'] <- 1
-up['rep'] <- 2
-up['cond'] <- 3
-up['image'] <- 4
+up['experiment'] <- 2
+up['rep'] <- 3
+up['cond'] <- 4
+up['image'] <- 5
 
 normalise_organelles_to <- 'cell'
 
