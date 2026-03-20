@@ -243,7 +243,6 @@ for(c in condcells){
     
   for(org in c(organelles, contacts)[!c(organelles, contacts) %in% c('cell', 'nuclei')]){#distance maps
     if(sum(cell.pixels[org])>0){
-      print(paste0(org, ' present'))
       cell.pixels[paste0("dist_to_", org)] <- as.data.frame(mask(distance(cell.raster[[org]], target = 0), cell.raster[['cell']], maskvalues = 0))[,1]#distance to nearest org pixel (0 if overlapping)
       
       patches <- as.data.frame(patches(cell.raster[[org]], zeroAsNA = TRUE ), xy = TRUE)
@@ -252,7 +251,6 @@ for(c in condcells){
       cell.pixels <- cell.pixels %>% select(-patches)
     }
     else{
-      print(paste0(org, ' absent'))
       cell.pixels[paste0("dist_to_", org)] <- NA
       cell.pixels[paste0(org, "_patch")] <- NA
     }
@@ -266,42 +264,53 @@ for(c in condcells){
   for(o in slicenames){#including cell here - might normalise to cell asymmetry downstream
     df.org <- cell.pixels[cell.pixels[o] > 0,]
     
-    #MDR  
-    adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_centroid_MDR')] <- mean(df.org$cent_norm)
-    if('nuclei' %in% names(cell.raster)){
-      adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_nucleus_MDR')] <- mean(df.org$nuc_norm)
-    }
-    
-    #coefficient of asymmetry
-    tab <- as.data.frame(table(df.org$anglebin))
-    tally <- 0
-    halfcount <- nrow(tab)/2
-    for(n in 1:halfcount){
-      a <- abs(tab[n, 'Freq'] - tab[n + halfcount, 'Freq'])
-      tally <- tally + a
-    }
-    CoA <- tally/nrow(df.org)
-    adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_CoA')] <- CoA
-    
-    #distance to nearest
-    for(o2 in slicenames[!slicenames %in% c('nuclei', 'cell')]){
-      adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_pixelwise_mean_dist_to_', o2)] <- mean(pull(df.org, paste0('dist_to_', o2)))
-      
-      patch_summary <- df.org %>%
-        group_by(paste0(o, '_patch')) %>%
-        summarise(min_dist = min(paste0('dist_to_', o2)))
-      
-      if(sum(is.na(patch_summary$min_dist))>0){#should all be NA if one is - CHECK
-        adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_instance_mean_dist_to_', o2)] <- NA
-        adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_percent_in_contact_with_', o2)] <- NA
+    if(nrow(df.org) == 0){#if organelle is absent in cell, bypass calculations, assign all metrics to NA - MUST MIRROR ELSE BLOCK TO AVOID MISSING COLUMNS
+      adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_centroid_MDR')] <- NA
+      if('nuclei' %in% names(cell.raster)){
+        adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_nucleus_MDR')] <- NA
       }
-      else{
-        adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_instance_mean_dist_to_', o2)] <- mean(patch_summary$min_dist)
-        adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_percent_in_contact_with_', o2)] <- (sum(patch_summary$min_dist == 0)/nrow(patch_summary))*100
+      adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_CoA')] <- NA
+      if (!o %in% c('nuclei', 'cell')){
+        for(o2 in slicenames[!slicenames %in% c('nuclei', 'cell')]){
+          adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_pixelwise_mean_dist_to_', o2)] <- NA
+          adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_instance_mean_dist_to_', o2)] <- NA
+          adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_percent_in_contact_with_', o2)] <- NA
+        }
       }
     }
-    
-    
+    else{
+      #MDR  
+      adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_centroid_MDR')] <- mean(df.org$cent_norm)
+      if('nuclei' %in% names(cell.raster)){
+        adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_nucleus_MDR')] <- mean(df.org$nuc_norm)
+      }
+      
+      #coefficient of asymmetry
+      tab <- as.data.frame(table(df.org$anglebin))
+      tally <- 0
+      halfcount <- nrow(tab)/2
+      for(n in 1:halfcount){
+        a <- abs(tab[n, 'Freq'] - tab[n + halfcount, 'Freq'])
+        tally <- tally + a
+      }
+      CoA <- tally/nrow(df.org)
+      adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_CoA')] <- CoA
+      
+      #distance to nearest
+      if (!o %in% c('nuclei', 'cell')){#already calculated distance to nucleus/PM for MDR
+        for(o2 in slicenames[!slicenames %in% c('nuclei', 'cell')]){
+          adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_pixelwise_mean_dist_to_', o2)] <- mean(pull(df.org, paste0('dist_to_', o2)))
+          
+          patch_summary <- df.org %>%
+            group_by_at(paste0(o, '_patch')) %>%
+            summarise_at(paste0('dist_to_', o2), list(min_dist = min))
+          
+          adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_instance_mean_dist_to_', o2)] <- mean(patch_summary$min_dist)
+          adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_percent_in_contact_with_', o2)] <- (sum(patch_summary$min_dist == 0)/nrow(patch_summary))*100
+          #calculated by instance, not area
+        }
+      }
+    }
     
     if (o %in% contacts){
       #pixel counts for normalising contact areas
