@@ -419,7 +419,7 @@ for c in conditions:
 		
 		
 		#save stack labels and short codes for interpreting data in R
-		with open(datadir + "analysis\\" + c + "_" + cell_id + "_slice_labels.csv", "w") as f:#different path format than ImageJ
+		with open(datadir + "analysis" + os.sep + c + "_" + cell_id + "_slice_labels.csv", "w") as f:#different path format than ImageJ
 			for i in range(1, len(slicenames) + 1, 1):
 				f.write(str(i) + "," + slicenames.keys()[list(slicenames.values()).index(i)] + "," + organelles_short.get(slicenames.keys()[list(slicenames.values()).index(i)], "") + "\n")
 		#TODO - move combo_present and this outside of loop - should be the same for all cells and conditions in a batch
