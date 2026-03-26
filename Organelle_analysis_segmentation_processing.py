@@ -234,9 +234,12 @@ for c in conditions:
 		rm.select(0)
 		rm.runCommand("Delete")#deleting original cell boundary - now in wrong place in cropped image
 		rm.rename(0, cell_id)
-		rm.select(cell_crop, 0)
 		#removing all pixels outside cell mask for cell_crop stack
-		IJ.run(cell_crop, "Clear Outside", "stack")
+		for i in range(1, cell_crop.getStackSize() + 1, 1):
+			slice_processor = cell_crop.getImageStack().getProcessor(i)
+			slice_processor.setColor("#000000")
+			slice_processor.fillOutside(rm.getRoi(0))
+		rm.select(cell_crop, 0)
 		cell_crop_mask = cell_crop.createRoiMask()
 		if(nuclei_bool == True) and ('nuclei' in organelles_selected):
 			cell_crop_slice_order = cell_crop.getImageStack().getSliceLabels()
