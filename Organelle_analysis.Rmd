@@ -142,7 +142,7 @@ remove(org)
 
 metrics$total_organelle_area <- sapply(condcells, function(c){df <- summary_measurements[[c]]@data; df[df$Slice == 'organelles','Total.Area'][1]})
 metrics$total_organelle_area_norm_cell <- metrics$total_organelle_area/metrics$cell_area
-metrics$total_contact_area <- sapply(condcells, function(c){df <- summary_measurements[[c]]@data; df[df$Slice == 'pairwise_contact_sites','Total.Area'][1]})
+metrics$total_contact_area <- sapply(condcells, function(c){df <- summary_measurements[[c]]@data; df[df$Slice == 'contact_sites','Total.Area'][1]})
 metrics$total_contact_area_norm_cell <- metrics$total_contact_area/metrics$cell_area
 metrics$total_contact_area_norm_organelles <- metrics$total_contact_area/metrics$total_organelle_area
 #TODO ASAP - NORMALISE TO INVOLVED ORGANELLES FOR EACH CONTACT
@@ -326,17 +326,28 @@ for(c in condcells){
 }
 remove(c)
 ```
-*Data cleaning*
-```{r adv_metrics_cleaning}
-#adv_metrics[is.na(adv_metrics)] <- 0 #DON'T USE - NEED TO EXCLUDE CELLS WITHOUT PARTICULAR ORGANELLES/CONTACTS
-```
-
 *Combining with ImageJ metrics*
 ```{r full_metrics_join}
 full_metrics <- dplyr::left_join(metrics, adv_metrics, by = join_by(condcell == condcell))
 ```
 
-*Normalising contact areas to areas of involved organelles*
+*Data cleaning*
+```{r adv_metrics_cleaning}
+#handle NA values - FOR PCA/UMAP/etc. ONLY
+full_metrics.forDR <- full_metrics #watch memory usage - fine for now
+
+#MDR - set NA to 1/at periphery
+full_metrics.forDR[,grepl('_MDR', colnames(full_metrics.forDR))][is.na(full_metrics.forDR[,grepl('_MDR', colnames(full_metrics.forDR))])] <- 1
+#CoA - set NA to 0/perfectly symmetrical
+full_metrics.forDR[,grepl('_CoA', colnames(full_metrics.forDR))][is.na(full_metrics.forDR[,grepl('_CoA', colnames(full_metrics.forDR))])] <- 0
+
+#distance_to - set NA to ????? (TODO)
+
+#percent in contact with - set NA to 0
+full_metrics.forDR[,grepl('_percent_in_contact_with_', colnames(full_metrics.forDR))][is.na(full_metrics.forDR[,grepl('_percent_in_contact_with_', colnames(full_metrics.forDR))])] <- 0
+```
+
+*Normalising contact areas to areas of involved organelles* TODO - check performance on missing organelles/contacts - should just be 0
 ```{r adv_contact_norm}
 for(c in contacts){
   # full_metrics[paste0(c, '_area_norm')] <- full_metrics[paste0(c, '_area')]/
