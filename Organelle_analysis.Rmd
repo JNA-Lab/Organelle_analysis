@@ -341,10 +341,16 @@ full_metrics.forDR[,grepl('_MDR', colnames(full_metrics.forDR))][is.na(full_metr
 #CoA - set NA to 0/perfectly symmetrical
 full_metrics.forDR[,grepl('_CoA', colnames(full_metrics.forDR))][is.na(full_metrics.forDR[,grepl('_CoA', colnames(full_metrics.forDR))])] <- 0
 
-#distance_to - set NA to ????? (TODO)
+#distance_to - set NA to ????? (TODO - REMOVING FOR NOW)
+full_metrics.forDR <- full_metrics.forDR[,!grepl('_dist_to_', colnames(full_metrics.forDR))]
 
 #percent in contact with - set NA to 0
 full_metrics.forDR[,grepl('_percent_in_contact_with_', colnames(full_metrics.forDR))][is.na(full_metrics.forDR[,grepl('_percent_in_contact_with_', colnames(full_metrics.forDR))])] <- 0
+
+#removing columns with zero variance - technically optional but required for scaling
+full_metrics.forDR <- full_metrics.forDR[,which(apply(full_metrics.forDR, 2, var)!=0)]#REMOVES IDENTITY COLUMNS
+full_metrics.forDR <- bind_cols(full_metrics[,1:(length(up) + 1)], full_metrics.forDR)#re-adding from full_metrics - CHECK
+
 ```
 
 *Normalising contact areas to areas of involved organelles* TODO - check performance on missing organelles/contacts - should just be 0
