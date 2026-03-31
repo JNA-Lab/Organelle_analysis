@@ -327,6 +327,7 @@ for(c in condcells){
   remove(pix, o.components, df.org, o, o2, CoA, tally, a, n, halfcount, tab, cr, patch_summary)
 }
 remove(c)
+print(paste0("Finished ", Sys.time()))
 ```
 *Combining with ImageJ metrics*
 ```{r full_metrics_join}
