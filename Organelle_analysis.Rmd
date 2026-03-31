@@ -217,7 +217,7 @@ for(c in condcells){
   cell.raster <- rast(paste0(dir, filesep, c, '_stack.tif'))
   names(cell.raster) <- slicenames
   crs(cell.raster) <- 'local' #IMPORTANT - treat as planar coordinates instead of lon/lat
-
+ 
   cell.pixels <- as.data.frame(cell.raster, xy = TRUE) %>% filter(cell >0)
 
   p <- pooled_measurements[[c]]@data
@@ -227,9 +227,9 @@ for(c in condcells){
   cell.pixels$dist_to_cent <- abs(sqrt((cell.pixels$x - cell_cent$X[1])^2 + (cell.pixels$y - cell_cent$Y[1])^2))
   cell.pixels$angle_to_cent <- (atan2((cell.pixels$y - cell_cent$Y[1]), (cell.pixels$x - cell_cent$X[1]))*180)/pi
   cell.pixels$anglebin <- cut_width(cell.pixels$angle_to_cent, width = binangle, closed = 'left', boundary = 0)
-
   
-  cell.raster <- extend(cell.raster, c(1,1), fill = 0)#adds negative values to left - no xy offset vs cell.pixels; values still match
+  cell.raster <- extend(cell.raster, c(1,1), fill = 0, NAflag = NA)#adds negative values to left - no xy offset vs cell.pixels; values still match
+  #NAflag setting to fix bug where certain cells have all organelle pixels set to NA from 255
   cr <- subst(cell.raster[['cell']], 255, NA)
   
   cell.pixels$dist_to_periphery <- as.data.frame(mask(distance(cr, exclude = 255), cell.raster[['cell']], maskvalues = 0))[,1]#distance to nearest pixel outside cell
@@ -240,7 +240,6 @@ for(c in condcells){
     cell.pixels$nuc_norm <- cell.pixels$dist_to_nucleus/(cell.pixels$dist_to_nucleus + cell.pixels$dist_to_periphery)
   }
   
-    
   for(org in c(organelles, contacts)[!c(organelles, contacts) %in% c('cell', 'nuclei')]){#distance maps
     if(sum(cell.pixels[org])>0){
       cell.pixels[paste0("dist_to_", org)] <- as.data.frame(mask(distance(cell.raster[[org]], target = 0), cell.raster[['cell']], maskvalues = 0))[,1]#distance to nearest org pixel (0 if overlapping)
@@ -249,9 +248,7 @@ for(c in condcells){
       cell.pixels <- cell.pixels %>% left_join(patches, join_by(x,y))
       cell.pixels[paste0(org, "_patch")] <- cell.pixels$patches #renaming to organelle-specific
       cell.pixels <- cell.pixels %>% select(-patches)
-      print(hist(cell.raster, layer = org, plot = FALSE))
-      #remove(patches)
-      #ALL PACTHES NA IN PROBLEM CELLS
+      remove(patches)
     }
     else{
       cell.pixels[paste0("dist_to_", org)] <- NA
@@ -324,8 +321,9 @@ for(c in condcells){
     
   }
   
+  
 
-  #remove(cell.raster, cell.pixels, cell_cent)
+  remove(cell.raster, cell.pixels, cell_cent)
   remove(pix, o.components, df.org, o, o2, CoA, tally, a, n, halfcount, tab, cr, patch_summary)
 }
 remove(c)
