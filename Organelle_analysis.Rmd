@@ -244,7 +244,7 @@ for(c in condcells){
     if(sum(cell.pixels[org])>0){
       cell.pixels[paste0("dist_to_", org)] <- as.data.frame(mask(distance(cell.raster[[org]], target = 0), cell.raster[['cell']], maskvalues = 0))[,1]#distance to nearest org pixel (0 if overlapping)
       
-      patches <- as.data.frame(patches(cell.raster[[org]], zeroAsNA = TRUE), xy = TRUE)#returning no rows in problem cells - ORGANELLE PIXELS NA
+      patches <- as.data.frame(patches(cell.raster[[org]], zeroAsNA = TRUE, directions = 8), xy = TRUE)#8 directions (Queen's case) to match ImageJ behaviour
       cell.pixels <- cell.pixels %>% left_join(patches, join_by(x,y))
       cell.pixels[paste0(org, "_patch")] <- cell.pixels$patches #renaming to organelle-specific
       cell.pixels <- cell.pixels %>% select(-patches)
