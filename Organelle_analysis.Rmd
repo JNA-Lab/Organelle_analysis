@@ -14,9 +14,18 @@ up['cell_line'] <- 1
 up['condition'] <- 2
 up['cell'] <- 3
 
-*normalise_organelles_to* - Which measurement to use to normalise organelle areas.  Options are 'cell', 'cytoplasm' (cell area - nucleus area), 'both', or 'none'. 'Cytoplasm' or 'both' will only work if nuclei were measured in the ImageJ analysis step, and nucleus will still be normalised to cell area unless 'none' is selected.  Organelle contacts are normalised to the cumulative area of the organelle types involved.
-
 *binangle* - The angle to use to split the cell into slices for calculating coefficient of asymmetry.  Must divide 360 into an even number of groups - e.g. 5, 6, or 10 is fine, but 7 or 8 won't work.
+
+
+*use_normalised_metrics* - Whether to use normalised or raw area metrics; TRUE or FALSE (without quotes).  Defaults to TRUE.
+
+*normalise_organelles_to* - Which measurement to use to normalise organelle areas.  Options are 'cell', 'cytoplasm' (cell area - nucleus area), 'both', or 'none'. 'Cytoplasm' or 'both' will only work if nuclei were measured in the ImageJ analysis step, and nucleus will still be normalised to cell area unless 'none' is selected.  Organelle contacts are always normalised to the cumulative area of the organelle types involved.
+
+*distance_metric* - Which method to use to determine how far each organelle is to the nearest of another type; options are 'pixelwise' (value is calculated for each organelle pixel and then averaged) or 'instance' (value is calculated for each individual organelle and then averaged).  Defaults to 'instance'.
+
+*MDR_type* - Whether the MDR (mead distribution radius) should be calculated using the distance to the centroid or edge of the nucleus; options are 'centroid' or 'nucleus'.  The 'nucleus' option requires nuclei to be measured in the ImageJ analysis step; 'centroid' will fall back to cell centroid if there is no nucleus data, but may be less accurate.  Defaults to 'centroid'.
+
+
 
 ```{r user_params}
 up <- list()#leave this line as-is - this variable will be used to retrieve the values below
@@ -26,10 +35,17 @@ up['rep'] <- 3
 up['cond'] <- 4
 up['image'] <- 5
 
-normalise_organelles_to <- 'cell'
 
 binangle = 5 #degree width of bins for asymmetry coefficient
 if((360/binangle) %% 2 != 0){ warning("Binangle must divide 360 into an even number of groups for the following code to work.") }
+
+#metric options
+use_normalised_metrics <- TRUE
+normalise_organelles_to <- 'cell' #TODO - not fully implemented
+distance_metric <- 'instance'
+MDR_type <- 'nucleus' #TODO - manual cell centroid option?
+
+
 ```
 
 
@@ -331,28 +347,20 @@ print(paste0("Finished ", Sys.time()))
 ```
 *Combining with ImageJ metrics*
 ```{r full_metrics_join}
+#TEMP - autosave
+save.image('V:\\Fiona\ Love\\SEGMENTATION_AND_ANALYSIS\\HeLa_cytoskeleton_experiments\\COMBINED_SEGMENTATIONS\\analysis\\20260403_R_Data_and_tables\\20260403_run_finished.RData')
+
 full_metrics <- dplyr::left_join(metrics, adv_metrics, by = join_by(condcell == condcell))
+
+#TEMP - autosave
+write.csv(full_metrics, 'V:\\Fiona\ Love\\SEGMENTATION_AND_ANALYSIS\\HeLa_cytoskeleton_experiments\\COMBINED_SEGMENTATIONS\\analysis\\20260403_R_Data_and_tables\\20260403_full_metrics.csv')
+
+
 ```
 
 *Data cleaning*
 ```{r adv_metrics_cleaning}
-#handle NA values - FOR PCA/UMAP/etc. ONLY
-full_metrics.forDR <- full_metrics #watch memory usage - fine for now
 
-#MDR - set NA to 1/at periphery
-full_metrics.forDR[,grepl('_MDR', colnames(full_metrics.forDR))][is.na(full_metrics.forDR[,grepl('_MDR', colnames(full_metrics.forDR))])] <- 1
-#CoA - set NA to 0/perfectly symmetrical
-full_metrics.forDR[,grepl('_CoA', colnames(full_metrics.forDR))][is.na(full_metrics.forDR[,grepl('_CoA', colnames(full_metrics.forDR))])] <- 0
-
-#distance_to - set NA to ????? (TODO - REMOVING FOR NOW)
-full_metrics.forDR <- full_metrics.forDR[,!grepl('_dist_to_', colnames(full_metrics.forDR))]
-
-#percent in contact with - set NA to 0
-full_metrics.forDR[,grepl('_percent_in_contact_with_', colnames(full_metrics.forDR))][is.na(full_metrics.forDR[,grepl('_percent_in_contact_with_', colnames(full_metrics.forDR))])] <- 0
-
-#removing columns with zero variance - technically optional but required for scaling
-full_metrics.forDR <- full_metrics.forDR[,which(apply(full_metrics.forDR, 2, var)!=0)]#REMOVES IDENTITY COLUMNS
-full_metrics.forDR <- bind_cols(full_metrics[,1:(length(up) + 1)], full_metrics.forDR)#re-adding from full_metrics - CHECK
 
 ```
 
@@ -367,15 +375,89 @@ for(c in contacts){
 remove(c)
 ```
 
+*Separating groups of metrics (e.g. raw vs normalised values)*
+```{r toggle_groups}
+
+metric_names <- colnames(full_metrics)
+metric_names <- metric_names[!metric_names %in% names(up)]#excluding user-specified identity metrics
+
+#normalised metrics
+metric_names.norm <- metric_names[grepl('_norm', metric_names)]
+metric_names.raw <- sub('_norm.+$', '', metric_names.norm)#TODO - sub vs gsub? should only appear once
+
+#pixelwise vs instance wise distance metrics
+metric_names.pixelwise <- metric_names[grepl('_pixelwise_mean_dist_to_', metric_names)]
+metric_names.instance <- metric_names[grepl('_instance_mean_dist_to_', metric_names)]
+
+#nucleus vs centroid MDR
+metric_names.nucMDR <- metric_names[grepl('_nucleus_MDR', metric_names)]
+metric_names.centMDR <- metric_names[grepl('_centroid_MDR', metric_names)]
+
+metric_names.unfiltered <- metric_names[!metric_names %in% c(metric_names.norm, 
+                                                             metric_names.raw, 
+                                                             metric_names.pixelwise, 
+                                                             metric_names.instance, 
+                                                             metric_names.nucMDR, 
+                                                             metric_names.centMDR)]
+
+#Assemble list of columns to keep
+
+metrics_to_keep <- c(names(up),
+                     metric_names.unfiltered,
+                     if(use_normalised_metrics == TRUE){metric_names.norm} else if(use_normalised_metrics == FALSE){metric_names.raw} else{metric_names.norm},
+                     if(distance_metric == 'instance'){metric_names.instance} else if(distance_metric == 'pixelwise'){metric_names.instance} else{metric_names.instance},
+                     if(MDR_type == 'nucleus'){metric_names.nucMDR} else if(MDR_type == 'centroid'){metric_names.centMDR} else{metric_names.centMDR}
+                     )
+
+full_metrics.filtered <- full_metrics[,metrics_to_keep]
+
+```
+
+
+
+## Filtering metrics for dimensionality reduction (PCA etc.)
+```{r DR_filter}
+#handle NA values - FOR PCA/UMAP/etc. ONLY
+full_metrics.forDR <- full_metrics.filtered #watch memory usage - fine for now
+
+#MDR - set NA to 1/at periphery
+full_metrics.forDR[,grepl('_MDR', colnames(full_metrics.forDR))][is.na(full_metrics.forDR[,grepl('_MDR', colnames(full_metrics.forDR))])] <- 1
+#CoA - set NA to 0/perfectly symmetrical
+full_metrics.forDR[,grepl('_CoA', colnames(full_metrics.forDR))][is.na(full_metrics.forDR[,grepl('_CoA', colnames(full_metrics.forDR))])] <- 0
+
+#distance_to - set NA to ????? (no sensible non-NA value, REMOVING FOR NOW)
+full_metrics.forDR <- full_metrics.forDR[,!grepl('_dist_to_', colnames(full_metrics.forDR))]
+
+#percent in contact with - set NA to 0
+full_metrics.forDR[,grepl('_percent_in_contact_with_', colnames(full_metrics.forDR))][is.na(full_metrics.forDR[,grepl('_percent_in_contact_with_', colnames(full_metrics.forDR))])] <- 0
+
+#removing columns with zero variance - technically optional but required for scaling
+full_metrics.forDR <- full_metrics.forDR[,which(apply(full_metrics.forDR, 2, var)!=0)]#REMOVES IDENTITY COLUMNS
+full_metrics.forDR <- bind_cols(full_metrics[,1:(length(up) + 1)], full_metrics.forDR)#re-adding from full_metrics - CHECK
+
+```
+
+
 ## Visualisation
 _TODO_
 ```{r}
-exclude_nuclei_metrics <- TRUE #not excluding nuclear area, CoA, etc.
+#NOT CURRENTLY IMPLEMENTED ANYWHERE
+exclude_nuclei_metrics <- TRUE #excluding nuclear area, CoA, etc.
 if(exclude_nuclei_metrics){
   organelles <- organelles[organelles != 'nuclei']
   contacts <- contacts[!grepl('n', contacts)]
 }
+
 ```
+
+
+
+
+
+
+
+
+
 
 *MEAN DISTANCES HEATMAP*
 ```{r pull_distance_metrics}
