@@ -19,7 +19,7 @@ up['cell'] <- 3
 
 *use_normalised_metrics* - Whether to use normalised or raw area metrics; TRUE or FALSE (without quotes).  Defaults to TRUE.
 
-*normalise_organelles_to* - Which measurement to use to normalise organelle areas.  Options are 'cell', 'cytoplasm' (cell area - nucleus area), 'both', or 'none'. 'Cytoplasm' or 'both' will only work if nuclei were measured in the ImageJ analysis step, and nucleus will still be normalised to cell area unless 'none' is selected.  Organelle contacts are always normalised to the cumulative area of the organelle types involved.
+*normalise_organelles_to* - Which measurement to use to normalise organelle areas.  Options are 'cell', 'cytoplasm' (cell area - nucleus area), 'both', or 'none'. 'Cytoplasm' or 'both' will only work if nuclei were measured in the ImageJ analysis step, and nuclei will still be normalised to cell area unless 'none' is selected.  Organelle contacts are always normalised to the cumulative area of the organelle types involved.
 
 *distance_metric* - Which method to use to determine how far each organelle is to the nearest of another type; options are 'pixelwise' (value is calculated for each organelle pixel and then averaged) or 'instance' (value is calculated for each individual organelle and then averaged).  Defaults to 'instance'.
 
@@ -56,16 +56,20 @@ MDR_type <- 'nucleus' #TODO - manual cell centroid option?
 knitr::opts_chunk$set(echo = TRUE)
 library(tcltk)
 library(dplyr)
-library(ggplot2)
-library(ggpubr)
-library(patchwork)
-library(corrr)
-library(ggcorrplot)
-library(factoextra)
+# library(ggplot2)
+# library(ggpubr)
+# library(patchwork)
+# library(corrr)
+# library(ggcorrplot)
+# library(factoextra)
+#TODO - check these are all still used; move PCA-related to vis section
+
+#for advanced metrics
+library(terra)
 
 #additional packages specified directly in function calls:
-#rstudioapi
-#TODO - check these are all still used; move PCA-related to vis section
+library(rstudioapi)
+
 ```
 
 *Select ImageJ Macro output directory*
@@ -161,23 +165,33 @@ metrics$total_organelle_area_norm_cell <- metrics$total_organelle_area/metrics$c
 metrics$total_contact_area <- sapply(condcells, function(c){df <- summary_measurements[[c]]@data; df[df$Slice == 'contact_sites','Total.Area'][1]})
 metrics$total_contact_area_norm_cell <- metrics$total_contact_area/metrics$cell_area
 metrics$total_contact_area_norm_organelles <- metrics$total_contact_area/metrics$total_organelle_area
-#TODO ASAP - NORMALISE TO INVOLVED ORGANELLES FOR EACH CONTACT
 
 if('nuclei_area' %in% colnames(metrics)){
   metrics$cytoplasmic_area <- metrics$cell_area - metrics$nuclei_area
-  for(org in c(organelles)){
-    metrics[paste0(org, "_area_norm_cyto")] <- metrics[paste0(org, "_area")]/metrics$cytoplasmic_area
-    #TODO - conditional on user params
-    #TODO - norm nuclei to cell area instead of cyto
+  if(normalise_organelles_to %in% c('cytoplasm', 'both')){
+    for(org in c(organelles)){
+      metrics[paste0(org, "_area_norm_cyto")] <- metrics[paste0(org, "_area")]/metrics$cytoplasmic_area
+      #TODO - exclude nuclei at this stage (area related to cytoplasm area)
+    }
+    remove(org)
+    metrics$total_organelle_area_norm_cyto <- metrics$total_organelle_area/metrics$cytoplasmic_area
+    metrics$total_contact_area_norm_cyto <- metrics$total_contact_area/metrics$cytoplasmic_area
   }
-  remove(org)
+  
 }
 ```
 
 *Data cleaning*
 ```{r imagej_metrics_cleaning}
 metrics[is.na(metrics)] <- 0
+
+if(normalise_organelles_to %in% c('cytoplasm', 'none')){#remove columns normalised to cell area, except for nuclei
+  to_remove <- colnames(metrics)[grepl('_area_norm_cell', colnames(metrics))]
+  to_remove <- to_remove[!to_remove %in% nuclei_area_norm_cell]
+}
+
 # Additional code here if necessary - e.g. removing bacterial measurements from 'uninfected' cells
+
 ```
 
 Optional - passing through additional measurements from ImageJ, with details from file names
@@ -197,9 +211,6 @@ remove(individual_measurements, summary_measurements, slicenames.df)
 ```
 
 ## Advanced metrics
-```{r adv_setup, include=FALSE}
-library(terra)
-```
 
 *Constants and functions*
 ```{r adv_constants_and_functions}
@@ -274,9 +285,6 @@ for(c in condcells){
   remove(org)
   
   
-  # for(o in slicenames[slicenames != 'cell']){
-  #   adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_MDR')] <- mean(cell.pixels[cell.pixels[,o]>0,]$norm)
-  # }
   for(o in slicenames){#including cell here - might normalise to cell asymmetry downstream
     df.org <- cell.pixels[cell.pixels[o] > 0,]
     
@@ -295,7 +303,7 @@ for(c in condcells){
       }
     }
     else{
-      #MDR  
+      #MDR - TODO skip unnecessary calculations based on user parameters  
       adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_centroid_MDR')] <- mean(df.org$cent_norm)
       if('nuclei' %in% names(cell.raster)){
         adv_metrics[which(adv_metrics$condcell == c), paste0(o, '_nucleus_MDR')] <- mean(df.org$nuc_norm)
@@ -336,8 +344,6 @@ for(c in condcells){
     }
     
   }
-  
-  
 
   remove(cell.raster, cell.pixels, cell_cent)
   remove(pix, o.components, df.org, o, o2, CoA, tally, a, n, halfcount, tab, cr, patch_summary)
