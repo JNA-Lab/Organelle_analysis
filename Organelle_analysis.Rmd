@@ -357,6 +357,7 @@ print(paste0("Finished ", Sys.time()))
 full_metrics <- dplyr::left_join(metrics, adv_metrics, by = join_by(condcell == condcell))
 
 ```
+
 *Normalising contact areas to areas of involved organelles* TODO - check performance on missing organelles/contacts - should just be 0
 ```{r adv_contact_norm}
 for(c in contacts){
@@ -364,6 +365,8 @@ for(c in contacts){
   full_metrics[paste0(c, '_area_norm')] <- sapply(full_metrics$condcell, function(cc){#TODO - make this cleaner/check order is consistent
     full_metrics[full_metrics$condcell == cc, paste0(c, '_area')]/norm_values[norm_values$condcell == cc, c]
   })
+  #remove corresponding cell-/cyto-normalised columns
+  full_metrics <- full_metrics[,colnames(full_metrics)[which(!grepl(paste0(c, '_area_norm_'), colnames(full_metrics)))]]
 }
 remove(c)
 ```
