@@ -41,7 +41,7 @@ if((360/binangle) %% 2 != 0){ warning("Binangle must divide 360 into an even num
 
 #metric options
 use_normalised_metrics <- TRUE
-normalise_organelles_to <- 'cell' #TODO - not fully implemented
+normalise_organelles_to <- 'cell' #TODO - NOT FULLY IMPLEMENTED
 distance_metric <- 'instance'
 MDR_type <- 'nucleus' #TODO - manual cell centroid option?
 
@@ -347,23 +347,10 @@ print(paste0("Finished ", Sys.time()))
 ```
 *Combining with ImageJ metrics*
 ```{r full_metrics_join}
-#TEMP - autosave
-save.image('V:\\Fiona\ Love\\SEGMENTATION_AND_ANALYSIS\\HeLa_cytoskeleton_experiments\\COMBINED_SEGMENTATIONS\\analysis\\20260403_R_Data_and_tables\\20260403_run_finished.RData')
 
 full_metrics <- dplyr::left_join(metrics, adv_metrics, by = join_by(condcell == condcell))
 
-#TEMP - autosave
-write.csv(full_metrics, 'V:\\Fiona\ Love\\SEGMENTATION_AND_ANALYSIS\\HeLa_cytoskeleton_experiments\\COMBINED_SEGMENTATIONS\\analysis\\20260403_R_Data_and_tables\\20260403_full_metrics.csv')
-
-
 ```
-
-*Data cleaning*
-```{r adv_metrics_cleaning}
-
-
-```
-
 *Normalising contact areas to areas of involved organelles* TODO - check performance on missing organelles/contacts - should just be 0
 ```{r adv_contact_norm}
 for(c in contacts){
@@ -375,7 +362,14 @@ for(c in contacts){
 remove(c)
 ```
 
-*Separating groups of metrics (e.g. raw vs normalised values)*
+
+*Data cleaning*
+```{r adv_metrics_cleaning}
+#none applicable - NA values at this stage should stay NA
+#add relevant code here if e.g. handling infected/uninfected cells differently, flagging 'bystander' cells, etc.
+```
+
+*Separating groups of metrics (e.g. raw vs normalised values) and filtering based on user parameters (see top)*
 ```{r toggle_groups}
 
 metric_names <- colnames(full_metrics)
@@ -409,40 +403,14 @@ metrics_to_keep <- c(names(up),
                      if(MDR_type == 'nucleus'){metric_names.nucMDR} else if(MDR_type == 'centroid'){metric_names.centMDR} else{metric_names.centMDR}
                      )
 
-full_metrics.filtered <- full_metrics[,metrics_to_keep]
+full_metrics.filtered <- full_metrics[,metrics_to_keep] #might have issues here if working with very large data sets - consider removing unjoined/unfiltered tables
 
 ```
 
-
-
-## Filtering metrics for dimensionality reduction (PCA etc.)
-```{r DR_filter}
-#handle NA values - FOR PCA/UMAP/etc. ONLY
-full_metrics.forDR <- full_metrics.filtered #watch memory usage - fine for now
-
-#MDR - set NA to 1/at periphery
-full_metrics.forDR[,grepl('_MDR', colnames(full_metrics.forDR))][is.na(full_metrics.forDR[,grepl('_MDR', colnames(full_metrics.forDR))])] <- 1
-#CoA - set NA to 0/perfectly symmetrical
-full_metrics.forDR[,grepl('_CoA', colnames(full_metrics.forDR))][is.na(full_metrics.forDR[,grepl('_CoA', colnames(full_metrics.forDR))])] <- 0
-
-#distance_to - set NA to ????? (no sensible non-NA value, REMOVING FOR NOW)
-full_metrics.forDR <- full_metrics.forDR[,!grepl('_dist_to_', colnames(full_metrics.forDR))]
-
-#percent in contact with - set NA to 0
-full_metrics.forDR[,grepl('_percent_in_contact_with_', colnames(full_metrics.forDR))][is.na(full_metrics.forDR[,grepl('_percent_in_contact_with_', colnames(full_metrics.forDR))])] <- 0
-
-#removing columns with zero variance - technically optional but required for scaling
-full_metrics.forDR <- full_metrics.forDR[,which(apply(full_metrics.forDR, 2, var)!=0)]#REMOVES IDENTITY COLUMNS
-full_metrics.forDR <- bind_cols(full_metrics[,1:(length(up) + 1)], full_metrics.forDR)#re-adding from full_metrics - CHECK
-
-```
-
-
-## Visualisation
-_TODO_
+_TODO - in progress_
 ```{r}
-#NOT CURRENTLY IMPLEMENTED ANYWHERE
-exclude_nuclei_metrics <- TRUE #excluding nuclear area, CoA, etc.
+#NOT CURRENTLY IMPLEMENTED ANYWHERE - handle and move parameter to top
+exclude_nuclei_metrics <- FALSE #excluding nuclear area, CoA, etc.
 if(exclude_nuclei_metrics){
   organelles <- organelles[organelles != 'nuclei']
   contacts <- contacts[!grepl('n', contacts)]
@@ -459,29 +427,3 @@ if(exclude_nuclei_metrics){
 
 
 
-*MEAN DISTANCES HEATMAP*
-```{r pull_distance_metrics}
-dist_metrics <- full_metrics %>% select(names(up) | contains('_mean_dist_to_'))
-dist_metrics.org_to_org <- dist_metrics %>% select(names(up) | starts_with(organelles) & ends_with(organelles))
-dist_metrics.contact_to_contact <- dist_metrics %>% select(names(up) | starts_with(contacts) & ends_with(contacts))
-dist_metrics.contact_to_org <- dist_metrics %>% select(names(up) | starts_with(contacts) & ends_with(organelles))
-dist.metrics.org_to_contacts <- dist_metrics %>% select(names(up) | starts_with(organelles) & ends_with(contacts))
-```
-```{r reshape_for_heatmap}
-#organelle to organelle
-org_to_org <- do.call(rbind, lapply(1:nrow(dist_metrics.org_to_org), function(i){
-  df <- do.call(rbind, lapply(colnames(dist_metrics.org_to_org)[!colnames(dist_metrics.org_to_org) %in% names(up)], function(col){
-          colsplit <- strsplit(col, '_mean_dist_to_')
-          from <- colsplit[[1]][1]
-          to <- colsplit[[1]][2]
-          value <- dist_metrics[i, col]
-          d <- data.frame(from = from, to = to, value = value)
-          return(d)
-        }))
-  df[names(up)] <- dist_metrics.org_to_org[rep_len(i, nrow(df)), names(up)]
-  return(df)
-}))
-```
-```{r ggplot2_tile_heatmap}
-ggplot(org_to_org, aes(y = from, x = to, fill = value)) + geom_tile() + facet_wrap(~cond)
-```
