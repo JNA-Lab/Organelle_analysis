@@ -25,7 +25,9 @@ up['cell'] <- 3
 
 *MDR_type* - Whether the MDR (mead distribution radius) should be calculated using the distance to the centroid or edge of the nucleus; options are 'centroid' or 'nucleus'.  The 'nucleus' option requires nuclei to be measured in the ImageJ analysis step; 'centroid' will fall back to cell centroid if there is no nucleus data, but may be less accurate.  Defaults to 'centroid'.
 
+*exclude_ER_instance* - Exclude metrics related to ER instance segmentation - e.g. average/sd of size, cicrularity, etc.  Metrics looking at the ER overall (area, MDR, CoA, etc.) will still me included.
 
+*exclude_nuclei_metrics* - Exclude all metrics related to nuclei and organelle-nucleus contacts (with the exception of '_nucleus_MDR' for other organelles and contacts).
 
 ```{r user_params}
 up <- list()#leave this line as-is - this variable will be used to retrieve the values below
@@ -44,7 +46,8 @@ use_normalised_metrics <- TRUE
 normalise_organelles_to <- 'cell' #TODO - NOT FULLY IMPLEMENTED
 distance_metric <- 'instance'
 MDR_type <- 'nucleus' #TODO - manual cell centroid option?
-
+exclude_ER_instance <- TRUE
+exclude_nuclei_metrics <- FALSE
 
 ```
 
@@ -396,12 +399,22 @@ metric_names.instance <- metric_names[grepl('_instance_mean_dist_to_', metric_na
 metric_names.nucMDR <- metric_names[grepl('_nucleus_MDR', metric_names)]
 metric_names.centMDR <- metric_names[grepl('_centroid_MDR', metric_names)]
 
+#specific organelle filtering
+metric_names.ERinstance <- c('ER_count', 'ER_size_avg', 'ER_size_sd', 'ER_circ_avg', 'ER_circ_sd', metric_names[grepl('^ER_instance', metric_names)])#hard-coded metric names
+metric_names.nuclei <- c(metric_names[grepl('^nuclei_', metric_names)], metric_names[grepl('_nuclei$', metric_names)], #TODO - distance to/percent in contact with nuclei metrics not calculated - add?
+                         metric_names[grepl(paste0('^', contacts[grepl('n', contacts)], sep = '', collapse = '|'), metric_names)],
+                         metric_names[grepl(paste0(contacts[grepl('n', contacts)], '$', sep = '', collapse = '|'), metric_names)])
+
 metric_names.unfiltered <- metric_names[!metric_names %in% c(metric_names.norm, 
                                                              metric_names.raw, 
                                                              metric_names.pixelwise, 
                                                              metric_names.instance, 
                                                              metric_names.nucMDR, 
-                                                             metric_names.centMDR)]
+                                                             metric_names.centMDR,
+                                                             metric_names.ERinstance,
+                                                             metric_names.nuclei)]
+
+
 
 #Assemble list of columns to keep
 
@@ -409,23 +422,16 @@ metrics_to_keep <- c(names(up),
                      metric_names.unfiltered,
                      if(use_normalised_metrics == TRUE){metric_names.norm} else if(use_normalised_metrics == FALSE){metric_names.raw} else{metric_names.norm},
                      if(distance_metric == 'instance'){metric_names.instance} else if(distance_metric == 'pixelwise'){metric_names.instance} else{metric_names.instance},
-                     if(MDR_type == 'nucleus'){metric_names.nucMDR} else if(MDR_type == 'centroid'){metric_names.centMDR} else{metric_names.centMDR}
+                     if(MDR_type == 'nucleus'){metric_names.nucMDR} else if(MDR_type == 'centroid'){metric_names.centMDR} else{metric_names.centMDR},
+                     if(exclude_ER_instance == FALSE){metric_names.ERinstance},
+                     if(exclude_nuclei_metrics == FALSE){metric_names.nuclei}
                      )
 
 full_metrics.filtered <- full_metrics[,metrics_to_keep] #might have issues here if working with very large data sets - consider removing unjoined/unfiltered tables
 
 ```
 
-_TODO - in progress_
-```{r}
-#NOT CURRENTLY IMPLEMENTED ANYWHERE - handle and move parameter to top
-exclude_nuclei_metrics <- FALSE #excluding nuclear area, CoA, etc.
-if(exclude_nuclei_metrics){
-  organelles <- organelles[organelles != 'nuclei']
-  contacts <- contacts[!grepl('n', contacts)]
-}
 
-```
 
 
 
