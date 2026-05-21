@@ -399,20 +399,14 @@ metric_names.instance <- metric_names[grepl('_instance_mean_dist_to_', metric_na
 metric_names.nucMDR <- metric_names[grepl('_nucleus_MDR', metric_names)]
 metric_names.centMDR <- metric_names[grepl('_centroid_MDR', metric_names)]
 
-#specific organelle filtering
-metric_names.ERinstance <- c('ER_count', 'ER_size_avg', 'ER_size_sd', 'ER_circ_avg', 'ER_circ_sd', metric_names[grepl('^ER_instance', metric_names)])#hard-coded metric names
-metric_names.nuclei <- c(metric_names[grepl('^nuclei_', metric_names)], metric_names[grepl('_nuclei$', metric_names)], #TODO - distance to/percent in contact with nuclei metrics not calculated - add?
-                         metric_names[grepl(paste0('^', contacts[grepl('n', contacts)], sep = '', collapse = '|'), metric_names)],
-                         metric_names[grepl(paste0(contacts[grepl('n', contacts)], '$', sep = '', collapse = '|'), metric_names)])
+
 
 metric_names.unfiltered <- metric_names[!metric_names %in% c(metric_names.norm, 
                                                              metric_names.raw, 
                                                              metric_names.pixelwise, 
                                                              metric_names.instance, 
                                                              metric_names.nucMDR, 
-                                                             metric_names.centMDR,
-                                                             metric_names.ERinstance,
-                                                             metric_names.nuclei)]
+                                                             metric_names.centMDR)]
 
 
 
@@ -422,15 +416,30 @@ metrics_to_keep <- c(names(up),
                      metric_names.unfiltered,
                      if(use_normalised_metrics == TRUE){metric_names.norm} else if(use_normalised_metrics == FALSE){metric_names.raw} else{metric_names.norm},
                      if(distance_metric == 'instance'){metric_names.instance} else if(distance_metric == 'pixelwise'){metric_names.instance} else{metric_names.instance},
-                     if(MDR_type == 'nucleus'){metric_names.nucMDR} else if(MDR_type == 'centroid'){metric_names.centMDR} else{metric_names.centMDR},
-                     if(exclude_ER_instance == FALSE){metric_names.ERinstance},
-                     if(exclude_nuclei_metrics == FALSE){metric_names.nuclei}
+                     if(MDR_type == 'nucleus'){metric_names.nucMDR} else if(MDR_type == 'centroid'){metric_names.centMDR} else{metric_names.centMDR}
                      )
 
 full_metrics.filtered <- full_metrics[,metrics_to_keep] #might have issues here if working with very large data sets - consider removing unjoined/unfiltered tables
 
 ```
+```{r org_exclusions}
+#processing after first round of toggle group filtering - might exclude from either/both groups selected
 
+#specific organelle filtering
+metric_names.ERinstance <- c('ER_count', 'ER_size_avg', 'ER_size_sd', 'ER_circ_avg', 'ER_circ_sd', metric_names[grepl('^ER_instance', metric_names)])#hard-coded metric names
+metric_names.nuclei <- c(metric_names[grepl('^nuclei_', metric_names)], metric_names[grepl('_nuclei$', metric_names)], #TODO - distance to/percent in contact with nuclei metrics not calculated - add?
+                         metric_names[grepl(paste0('^', contacts[grepl('n', contacts)], sep = '', collapse = '|'), metric_names)],
+                         metric_names[grepl(paste0(contacts[grepl('n', contacts)], '$', sep = '', collapse = '|'), metric_names)])
+
+metrics_to_exclude = c(
+                        if(exclude_ER_instance == TRUE){metric_names.ERinstance},
+                        if(exclude_nuclei_metrics == TRUE){metric_names.nuclei}
+  
+                      )
+
+full_metrics.filtered <- full_metrics.filtered[!colnames(full_metrics.filtered) %in% metrics_to_exclude]
+
+```
 
 
 
