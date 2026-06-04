@@ -34,7 +34,7 @@ channels = img1.getDimensions()[2]#width, height, nChannels, nSlices, nFrames
 #get processing options
 options = NonBlockingGenericDialog('Options')
 options.addMessage("Select the channels to quantify.")
-for n in range(0, channels + 1, 1):
+for n in range(1, channels + 1, 1):
 	options.addCheckbox("Channel " + str(n), False)
 	options.addToSameRow()
 	options.addStringField('Name', '')
@@ -42,7 +42,7 @@ options.showDialog()
 
 to_quantify = dict()
 if options.wasOKed():
-	for n in range(0, channels + 1, 1):
+	for n in range(1, channels + 1, 1):
 		include = options.getNextBoolean()
 		name = options.getNextString()
 		if include == True:
