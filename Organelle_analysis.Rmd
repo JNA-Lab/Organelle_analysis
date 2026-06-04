@@ -29,13 +29,16 @@ up['cell'] <- 3
 
 *exclude_nuclei_metrics* - Exclude all metrics related to nuclei and organelle-nucleus contacts (with the exception of '_nucleus_MDR' for other organelles and contacts).
 
+*fluorescence_quantification* - Whether or not to incorporate fluorescence quantification data.  This requires first running the 'Organelle_analysis_fluorescence_quantification' ImageJ macro, and will prompt you for the location of the fluorescence data folder.  (This is often inside the 'analysis' folder, but can be moved.)
+
 ```{r user_params}
 up <- list()#leave this line as-is - this variable will be used to retrieve the values below
 up['batch'] <- 1
-up['experiment'] <- 2
+up['line'] <- 2
 up['rep'] <- 3
 up['cond'] <- 4
-up['image'] <- 5
+up['experiment'] <- 5
+up['image'] <- 6
 
 
 binangle = 5 #degree width of bins for asymmetry coefficient
@@ -48,6 +51,7 @@ distance_metric <- 'instance'
 MDR_type <- 'nucleus' #TODO - manual cell centroid option?
 exclude_ER_instance <- TRUE
 exclude_nuclei_metrics <- FALSE
+fluorescence_quantification <- TRUE
 
 ```
 
@@ -80,6 +84,10 @@ library(rstudioapi)
 dir <- rstudioapi::selectDirectory(caption = "Select 'anaysis' folder from ImageJ macro")
 #TODO - note about running in Rstudio/from other tools - might need to change/specify directory
 filesep = .Platform$file.sep
+
+if(fluorescence_quantification == TRUE){
+  fluor_dir <- rstudioapi::selectDirectory(caption = "Select the 'fluorescence_quantification' folder from additional ImageJ macro")
+}
 ```
 
 *Identify conditions for matching and iterating over ROI/measurement files*
@@ -392,6 +400,39 @@ remove(c)
 ```{r adv_metrics_cleaning}
 #none applicable - NA values at this stage should stay NA
 #add relevant code here if e.g. handling infected/uninfected cells differently, flagging 'bystander' cells, etc.
+```
+
+*Fluorescence quantification*
+```{r fluor-quant}
+if(fluorescence_quantification == TRUE){
+  fluor_files <- list.files(fluor_dir, pattern = ('quantification\\.csv$'), recursive = FALSE, include.dirs = FALSE)
+  
+  fluor_data <- lapply(fluor_files, function(f){
+      f.split <- unlist(regmatches(f, regexec('(.+)_(.+)_quantification\\.csv$', f, perl = T))) #extracts original file name and channel quantified as elements 2 and 3
+      f.df <- read.csv(paste0(fluor_dir, filesep, f))
+      f.df$ROI_name <- unlist(regmatches(f.df$Label, regexec("(?<=:).+(?=:c:)", f.df$Label, perl = T)))
+      f.df$structure <- sub('^cell_\\d+_', '', f.df$ROI_name)
+      f.df$condcell <- paste0(f.split[2], '_', sub('_[A-Za-z]+$', '', f.df$ROI_name))#FRAGILE - make sure this still works with custom organelle labels
+      f.df$channel <- f.split[3]
+      
+      new.df <- data.frame(
+        condcell = unique(f.df$condcell)
+      )
+      #assuming each structure only measured once per condcell - should hold
+      for(c in unique(f.df$condcell)){
+        for(s in f.df[f.df$condcell == c,]$structure){
+          for(ch in unique(f.df[f.df$condcell == c,]$channel)){
+            new.df[new.df$condcell == c, paste0(s, '_mean_', ch, '_fluorescence')] = f.df[f.df$condcell == c & f.df$structure == s & f.df$channel == ch,]$Mean[1]
+            new.df[new.df$condcell == c, paste0(s, '_raw_', ch, '_fluorescence')] = f.df[f.df$condcell == c & f.df$structure == s & f.df$channel == ch,]$RawIntDen[1]
+          }
+        }
+      }
+      return(new.df)
+    })
+  fluor_metrics <- bind_rows(fluor_data)
+  
+  full_metrics <- left_join(full_metrics, fluor_metrics, by = join_by(condcell = condcell))
+}
 ```
 
 *Separating groups of metrics (e.g. raw vs normalised values) and filtering based on user parameters (see top)*
