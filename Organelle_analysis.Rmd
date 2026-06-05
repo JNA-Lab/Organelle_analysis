@@ -431,7 +431,7 @@ if(fluorescence_quantification == TRUE){
     })
   fluor_metrics <- bind_rows(fluor_data)
   
-  full_metrics <- left_join(full_metrics, fluor_metrics, by = join_by(condcell = condcell))
+  full_metrics <- left_join(full_metrics, fluor_metrics, by = join_by(condcell == condcell))
 }
 ```
 
