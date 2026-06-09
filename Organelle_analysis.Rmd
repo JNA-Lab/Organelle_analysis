@@ -443,7 +443,8 @@ metric_names <- metric_names[!metric_names %in% names(up)]#excluding user-specif
 
 #normalised metrics
 metric_names.norm <- metric_names[grepl('_norm', metric_names)]
-metric_names.raw <- sub('_norm.+$', '', metric_names.norm)#TODO - sub vs gsub? should only appear once
+metric_names.raw <- sub('_norm.*$', '', metric_names.norm)#TODO - sub vs gsub? should only appear once
+#getting raw metrics this way avoids metrics that don't have normalised counterpart; i.e. cell and cytoplasm areas
 
 #pixelwise vs instance wise distance metrics
 metric_names.pixelwise <- metric_names[grepl('_pixelwise_mean_dist_to_', metric_names)]
