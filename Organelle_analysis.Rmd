@@ -51,7 +51,7 @@ distance_metric <- 'instance'
 MDR_type <- 'nucleus' #TODO - manual cell centroid option?
 exclude_ER_instance <- TRUE
 exclude_nuclei_metrics <- FALSE
-fluorescence_quantification <- TRUE
+fluorescence_quantification <- FALSE
 
 ```
 
@@ -254,6 +254,7 @@ for(c in condcells){
   print(Sys.time())
   cell.raster <- rast(paste0(dir, filesep, c, '_stack.tif'))
   names(cell.raster) <- slicenames
+  
   crs(cell.raster) <- 'local' #IMPORTANT - treat as planar coordinates instead of lon/lat
  
   cell.pixels <- as.data.frame(cell.raster, xy = TRUE) %>% filter(cell >0)
@@ -322,9 +323,9 @@ for(c in condcells){
       }
       
       #coefficient of asymmetry
-      tab <- as.data.frame(table(df.org$anglebin))
+      tab <- as.data.frame(table(df.org$anglebin))#anglebin is a factor - table will include 0s for 'empty' bins
       tally <- 0
-      halfcount <- nrow(tab)/2
+      halfcount <- nrow(tab)/2#should be consistent throughout run; calculate elsewhere to avoid repetition?
       for(n in 1:halfcount){
         a <- abs(tab[n, 'Freq'] - tab[n + halfcount, 'Freq'])
         tally <- tally + a
