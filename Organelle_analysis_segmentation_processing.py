@@ -97,6 +97,8 @@ if options.wasOKed():#is this necessary?
 		del org_regex["other"]
 		organelles_short[other_name] = organelles_short["other"]
 		del organelles_short["other"]
+		org_invert[other_name] = org_invert["other"]
+		del org_invert["other"]
 		organelles_selected = [other_name if o == "other" else o for o in organelles_selected]#replace with custom organelle name
 		
 	#ROI groups
