@@ -241,6 +241,7 @@ for c in conditions:
 			slice_processor = cell_crop.getImageStack().getProcessor(i)
 			slice_processor.setColor("#000000")
 			slice_processor.fillOutside(rm.getRoi(0))
+			#avoiding 'clear outside' because it depends on the currently selected background colour
 		rm.select(cell_crop, 0)
 		cell_crop_mask = cell_crop.createRoiMask()
 		if(nuclei_bool == True) and ('nuclei' in organelles_selected):
