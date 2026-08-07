@@ -61,14 +61,8 @@ fluorescence_quantification <- FALSE
 *R setup*
 ```{r imagej_setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(tcltk)
 library(dplyr)
-library(ggplot2)
-# library(ggpubr)
-# library(patchwork)
-# library(corrr)
-# library(ggcorrplot)
-# library(factoextra)
+library(ggplot2)#using cut_width function
 #TODO - check these are all still used; move PCA-related to vis section
 
 #for advanced metrics
