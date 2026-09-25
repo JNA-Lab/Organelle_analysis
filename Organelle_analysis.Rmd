@@ -9,30 +9,30 @@ output: html_document
 ## User parameters
 
 *file name parsing* - each section of the file name delineated by underscores (_) can be passed as a variable representing e.g. timepoint, cell line, experimental condition, etc.  Indicate which place each one is in here, ensuring there are no spaces or other special characters (besides underscores) in the name.
-e.g. for something like "HeLa_Ctrl_cell1":
+e.g. for something like "HeLa_control_cell1":
 up['cell_line'] <- 1
 up['condition'] <- 2
 up['cell'] <- 3
 
-*binangle* - The angle to use to split the cell into slices for calculating coefficient of asymmetry.  Must divide 360 into an even number of groups - e.g. 5, 6, or 10 is fine, but 7 or 8 won't work.
-
+*binangle* - The angle to use to split the cell into slices for calculating coefficient of asymmetry.  Must divide 360 into an even number of groups - e.g. 5, 6, or 10 is fine, but 7 or 8 won't work.  Defaults to 5.
 
 *use_normalised_metrics* - Whether to use normalised or raw area metrics; TRUE or FALSE (without quotes).  Defaults to TRUE.
 
-*normalise_organelles_to* - Which measurement to use to normalise organelle areas.  Options are 'cell', 'cytoplasm' (cell area - nucleus area), 'both', or 'none'. 'Cytoplasm' or 'both' will only work if nuclei were measured in the ImageJ analysis step, and nuclei will still be normalised to cell area unless 'none' is selected.  Organelle contacts are always normalised to the cumulative area of the organelle types involved.
+*normalise_organelles_to* - Which measurement to use to normalise organelle areas.  Options are 'cell', 'cytoplasm' (cell area - nucleus area), 'both', or 'none'. 'Cytoplasm' or 'both' will only work if nuclei were measured in the ImageJ analysis step, and nuclei will still be normalised to cell area unless 'none' is selected.  Defaults to 'cell'; other options have not been comprehensively tested.  Organelle contacts are always normalised to the cumulative area of the organelle types involved.
 
 *distance_metric* - Which method to use to determine how far each organelle is to the nearest of another type; options are 'pixelwise' (value is calculated for each organelle pixel and then averaged) or 'instance' (value is calculated for each individual organelle and then averaged).  Defaults to 'instance'.
 
-*MDR_type* - Whether the MDR (mead distribution radius) should be calculated using the distance to the centroid or edge of the nucleus; options are 'centroid' or 'nucleus'.  The 'nucleus' option requires nuclei to be measured in the ImageJ analysis step; 'centroid' will fall back to cell centroid if there is no nucleus data, but may be less accurate.  Defaults to 'centroid'.
+*MDR_type* - Whether the MDR (mead distribution radius) should be calculated using the distance to the centroid or edge of the nucleus; options are 'centroid' or 'nucleus'.  The 'nucleus' option requires nuclei to be measured in the ImageJ analysis step; 'centroid' will fall back to cell centroid if there is no nucleus data, but may be less accurate.  Defaults to 'nucleus'.
 
-*exclude_ER_instance* - Exclude metrics related to ER instance segmentation - e.g. average/sd of size, cicrularity, etc.  Metrics looking at the ER overall (area, MDR, CoA, etc.) will still me included.
+*exclude_ER_instance* - Exclude metrics related to ER instance segmentation - e.g. average/sd of size, cicrularity, etc.  Metrics looking at the ER overall (area, MDR, CoA, etc.) will still be included.  Defaults to 'TRUE'.
 
-*exclude_nuclei_metrics* - Exclude all metrics related to nuclei and organelle-nucleus contacts (with the exception of '_nucleus_MDR' for other organelles and contacts).
+*exclude_nuclei_metrics* - Exclude all metrics related to nuclei and organelle-nucleus contacts (with the exception of '_nucleus_MDR' for other organelles and contacts).  Defaults to 'FALSE'
 
-*fluorescence_quantification* - Whether or not to incorporate fluorescence quantification data.  This requires first running the 'Organelle_analysis_fluorescence_quantification' ImageJ macro, and will prompt you for the location of the fluorescence data folder.  (This is often inside the 'analysis' folder, but can be moved.)
+*fluorescence_quantification* - Whether or not to incorporate fluorescence quantification data.  This requires first running the 'Organelle_analysis_fluorescence_quantification' ImageJ macro, and will prompt you for the location of the fluorescence data folder.  (This is often inside the 'analysis' folder, but can be moved.)  Defaults to 'FALSE'.
 
 ```{r user_params}
 up <- list()#leave this line as-is - this variable will be used to retrieve the values below
+#modify the lines below to match your file naming
 up['batch'] <- 1
 up['line'] <- 2
 up['rep'] <- 3
@@ -61,15 +61,15 @@ fluorescence_quantification <- FALSE
 *R setup*
 ```{r imagej_setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
 library(dplyr)
 library(ggplot2)#using cut_width function
-#TODO - check these are all still used; move PCA-related to vis section
 
 #for advanced metrics
 library(terra)
 
 #additional packages specified directly in function calls:
-library(rstudioapi)
+#library(rstudioapi)
 
 ```
 

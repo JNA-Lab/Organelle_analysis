@@ -1,0 +1,3 @@
+# Deprecated code
+
+Earlier versions of the code in the main directory of this project.  These should not be used for analysis, but are provided as reference for anyone who might want to modify this project for their own purposes, or build something similar.  Some of them have been combined and adapted into the current version of the analysis code, while others represent abandoned approaches from the early stages of this project.

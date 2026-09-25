@@ -1,5 +1,7 @@
 # Organelle analysis
 
+Preprint on bioRxiv - [PRISM: A Plasmid-based Reporter for Intracellular Spectral Microscopy](https://www.biorxiv.org/content/10.64898/2026.09.01.746207v2)
+
 Software tools for extracting quantitative organelle metrics from segmented imaging data.  A companion to PRISM — a Plasmid-based Reporter for Intracellular Spectral Microscopy — but can be used for any organelle images.  These are designed to be easy to use with minimal technical expertise, but can also be readily customised to suit your data.
 
 
@@ -11,9 +13,14 @@ The organelle analysis pipeline runs on segmented, 2D image data of organelles w
 ### Installation
 No installation necessary!  Once you've downloaded the files, they can be run by dragging and dropping them directly into ImageJ (for .py and .ijm files) or RStudio (for .Rmd).
 
-<!-- If you don't have the required R packages installed, RStudio should prompt you to install them.  If it doesn't, you can run this script:
+If you don't have the required R packages installed, RStudio should prompt you to install them.  If it doesn't, you can run this script:
+```
+if (!require('dplyr')) install.packages('dplyr')
+if (!require('ggplot2')) install.packages('ggplot2')
+if (!require('terra')) install.packages('terra')
+if (!require('rstudioapi')) install.packages('rstudioapi')
+```
 
-``` ```-->
 
 
 
@@ -44,6 +51,13 @@ The main output of this pipeline is a table called `full_metrics.filtered` with 
 
 The outputs of the intermediate ImageJ macros are also saved in standard formats, in case you want to use them for other applications.  These include ROI files for your segmented cells and organelles (on a per-image and per-cell basis), a TIF stack for each cell containing all included organelle masks and calculated organelle contacts, and various CSV files with information on each segmented organelle within your cells.
 
+> [!NOTE]
+> There is a known issue with ROI ZIP files containing a single cell — see issue https://github.com/JNA-Lab/Organelle_analysis/issues/1 for workaround if you need to use these files.  This is not required for the standard analysis workflow.
 
 
+## Acknowledgements
+
+This code was written by Fiona Love.  Tom Allen, Solène Thomas, and Zach Baskir provided testing and feedback.  No generative AI was used in the production of this code.
+
+This project was funded by the Wellcome Trust through a Career Development Award to Jonathon Nixon-Abell.  Further funding details are provided in the paper linked above.
 
